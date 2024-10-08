@@ -35,11 +35,6 @@ struct Decimal5 {
 
 std::ostream& operator<<(std::ostream& os, const Decimal5& d);
 
-struct IncrementalPacketHeader {
-    uint64_t transactTime;
-    uint32_t exchangeTradingSessionID;
-};
-
 struct OrderBookEntry {
     int64_t MDEntryID;
     uint64_t TransactTime;
@@ -86,18 +81,31 @@ struct OrderBookSnapshot {
     std::vector<OrderBookEntry> entries;
 };
 
-struct MarketDataPacketHeader {
-    uint32_t msgSeqNum;
-    uint16_t msgSize;
-    uint16_t msgFlags;
-    uint64_t sendingTime;
-};
+    struct MarketDataPacketHeader {
+        uint32_t msgSeqNum;
+        uint16_t msgSize;
+        uint16_t msgFlags;
+        uint64_t sendingTime;
+    };
 
-struct FragmentedMessage {
-    std::vector<std::vector<uint8_t>> fragments;
-    uint64_t transactTime;
-    bool isComplete;
-};
+    struct IncrementalPacketHeader {
+        uint64_t transactTime;
+        uint32_t exchangeTradingSessionID;
+    };
+
+    struct SBEHeader {
+        uint16_t blockLength;
+        uint16_t templateId;
+        uint16_t schemaId;
+        uint16_t version;
+    };
+
+    struct FragmentedMessage {
+        std::vector<std::vector<uint8_t>> fragments;
+        uint64_t transactTime;
+        uint16_t templateId;
+        bool isComplete;
+    };
 
 using DecodedMessage = std::variant<OrderUpdate, OrderExecution, OrderBookSnapshot>;
 
@@ -119,19 +127,13 @@ public:
 
 private:
     MarketDataPacketHeader decodeMarketDataPacketHeader(const uint8_t* data);
+    IncrementalPacketHeader decodeIncrementalPacketHeader(const uint8_t* data);
+    SBEHeader decodeSBEHeader(const uint8_t* data);
 
-    std::map<int32_t, FragmentedMessage> fragmentedMessages;
+    std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedMessages;
 
-IncrementalPacketHeader decodeIncrementalPacketHeader(const uint8_t* data) {
-    IncrementalPacketHeader header;
-    header.transactTime = decodeUInt64(data);
-    header.exchangeTradingSessionID = decodeUInt32(data + 8);
-    return header;
-}
-
-std::optional<DecodedMessage> processFragment(const uint8_t* data, size_t length, uint16_t msgFlags, uint64_t transactTime) {
-    // Реализуйте логику обработки фрагментов
-}
+    std::optional<DecodedMessage> processFragment(const uint8_t* data, size_t length, uint16_t msgFlags, uint64_t transactTime, uint16_t templateId);
+    std::optional<DecodedMessage> decodeFullMessage(const uint8_t* data, size_t length, uint16_t templateId);
 
     // Specialized decoding methods
     [[nodiscard]] OrderUpdate decodeOrderUpdate(const uint8_t* data, size_t length) const;
