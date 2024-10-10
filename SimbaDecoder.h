@@ -35,6 +35,7 @@ struct Decimal5 {
 
 std::ostream& operator<<(std::ostream& os, const Decimal5& d);
 
+#pragma pack(push, 1)
 struct OrderBookEntry {
     int64_t MDEntryID;
     uint64_t TransactTime;
@@ -106,6 +107,7 @@ struct OrderBookSnapshot {
         uint16_t templateId;
         bool isComplete;
     };
+#pragma pack(pop)
 
 using DecodedMessage = std::variant<OrderUpdate, OrderExecution, OrderBookSnapshot>;
 

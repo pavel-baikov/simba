@@ -203,10 +203,19 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
     MarketDataPacketHeader mdHeader = decodeMarketDataPacketHeader(data);
     size_t offset = sizeof(MarketDataPacketHeader);
 
+    std::cout << "sizeof(MarketDataPacketHeader) = " << sizeof(MarketDataPacketHeader) << std::endl;
+
     bool isIncrementalPacket = (mdHeader.msgFlags & 0x08) != 0;
     bool isLastFragment = (mdHeader.msgFlags & 0x01) != 0;
     bool isStartOfSnapshot = (mdHeader.msgFlags & 0x02) != 0;
     bool isEndOfSnapshot = (mdHeader.msgFlags & 0x04) != 0;
+
+    std::cout << "Message Flags Analysis:" << std::endl;
+    std::cout << "  Raw MsgFlags: 0x" << std::hex << std::setw(4) << std::setfill('0') << mdHeader.msgFlags << std::dec << std::endl;
+    std::cout << "  IsIncrementalPacket: " << (isIncrementalPacket ? "Yes" : "No") << std::endl;
+    std::cout << "  IsLastFragment: " << (isLastFragment ? "Yes" : "No") << std::endl;
+    std::cout << "  IsStartOfSnapshot: " << (isStartOfSnapshot ? "Yes" : "No") << std::endl;
+    std::cout << "  IsEndOfSnapshot: " << (isEndOfSnapshot ? "Yes" : "No") << std::endl;
 
     uint64_t transactTime = 0;
     if (isIncrementalPacket) {
@@ -217,6 +226,8 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
         IncrementalPacketHeader incHeader = decodeIncrementalPacketHeader(data + offset);
         transactTime = incHeader.transactTime;
         offset += sizeof(IncrementalPacketHeader);
+
+	std::cout << "offset = " << offset << " sizeof(IncrementalPacketHeader) = " << sizeof(IncrementalPacketHeader) << std::endl;
     }
 
     if (length < offset + sizeof(SBEHeader)) {
@@ -241,40 +252,70 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
     return processFragment(data + offset, length - offset, mdHeader.msgFlags, transactTime, sbeHeader.templateId);
 }
 
-std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data, size_t length, 
-                                                            uint16_t msgFlags, uint64_t transactTime, 
+std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data, size_t length,
+                                                            uint16_t msgFlags, uint64_t transactTime,
                                                             uint16_t templateId) {
+    std::cout << "Entering processFragment" << std::endl;
+    std::cout << "  Length: " << length << std::endl;
+    std::cout << "  MsgFlags: 0x" << std::hex << msgFlags << std::dec << std::endl;
+    std::cout << "  TransactTime: " << transactTime << std::endl;
+    std::cout << "  TemplateId: " << templateId << std::endl;
+
     bool isLastFragment = (msgFlags & 0x01) != 0;
     bool isStartOfSnapshot = (msgFlags & 0x02) != 0;
     bool isEndOfSnapshot = (msgFlags & 0x04) != 0;
+    bool isIncrementalPacket = (msgFlags & 0x08) != 0;
+
+    std::cout << "  IsLastFragment: " << (isLastFragment ? "Yes" : "No") << std::endl;
+    std::cout << "  IsStartOfSnapshot: " << (isStartOfSnapshot ? "Yes" : "No") << std::endl;
+    std::cout << "  IsEndOfSnapshot: " << (isEndOfSnapshot ? "Yes" : "No") << std::endl;
+    std::cout << "  IsIncrementalPacket: " << (isIncrementalPacket ? "Yes" : "No") << std::endl;
 
     int32_t securityId = decodeInt32(data);
-
-    std::cout << "processFragment templateId = " << templateId << " securityId = " << securityId << std::endl;
+    std::cout << "  SecurityId: " << securityId << std::endl;
 
     std::pair<int32_t, uint16_t> key(securityId, templateId);
 
-    if (!isLastFragment || isStartOfSnapshot || isEndOfSnapshot) {
+    // Проверяем, является ли сообщение одним из тех, которые могут быть фрагментированы
+    bool canBeFragmented = (templateId == 14 || templateId == 15 || templateId == 16 || templateId == 17);
+
+    // Изменяем условие для определения фрагментированного сообщения
+    bool isFragmented = canBeFragmented && (isStartOfSnapshot || isEndOfSnapshot || (isIncrementalPacket && !isLastFragment));
+
+    if (isFragmented) {
+        std::cout << "Processing as part of fragmented message" << std::endl;
         auto& fragMsg = fragmentedMessages[key];
+        
+        if (isStartOfSnapshot) {
+            // Начало нового снэпшота, очищаем предыдущие фрагменты
+            fragMsg.fragments.clear();
+        }
+        
         fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
         fragMsg.transactTime = transactTime;
         fragMsg.templateId = templateId;
-        fragMsg.isComplete = isLastFragment || isEndOfSnapshot;
 
-        if (!fragMsg.isComplete) {
+        std::cout << "  Fragment added. Total fragments: " << fragMsg.fragments.size() << std::endl;
+
+        if (!isLastFragment && !isEndOfSnapshot) {
+            std::cout << "Waiting for more fragments" << std::endl;
             return std::nullopt;
         }
 
+        // Собираем полное сообщение из фрагментов
         std::vector<uint8_t> fullMessage;
         for (const auto& fragment : fragMsg.fragments) {
             fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
         }
         fragmentedMessages.erase(key);
 
+        std::cout << "Assembled full message from fragments. Size: " << fullMessage.size() << std::endl;
         return decodeFullMessage(fullMessage.data(), fullMessage.size(), templateId);
+    } else {
+        // Обработка нефрагментированных сообщений
+        std::cout << "Processing as non-fragmented message" << std::endl;
+        return decodeFullMessage(data, length, templateId);
     }
-
-    return decodeFullMessage(data, length, templateId);
 }
 
 std::optional<DecodedMessage> SimbaDecoder::decodeFullMessage(const uint8_t* data, size_t length, uint16_t templateId) {
@@ -381,72 +422,91 @@ OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t /*
     return execution;
 }
 
-OrderBookSnapshot SimbaDecoder::decodeOrderBookSnapshot(const uint8_t* data, size_t /*length*/) const {
+OrderBookSnapshot SimbaDecoder::decodeOrderBookSnapshot(const uint8_t* data, size_t length) const {
     OrderBookSnapshot snapshot;
     size_t offset = 0;
 
+    std::cout << "Decoding OrderBookSnapshot..." << std::endl;
+    std::cout << "Total message length: " << length << " bytes" << std::endl;
+
     snapshot.SecurityID = decodeInt32(data + offset);
+    std::cout << "SecurityID: " << snapshot.SecurityID << std::endl;
     offset += 4;
 
     snapshot.LastMsgSeqNumProcessed = decodeUInt32(data + offset);
+    std::cout << "LastMsgSeqNumProcessed: " << snapshot.LastMsgSeqNumProcessed << std::endl;
     offset += 4;
 
     snapshot.RptSeq = decodeUInt32(data + offset);
+    std::cout << "RptSeq: " << snapshot.RptSeq << std::endl;
     offset += 4;
 
     snapshot.ExchangeTradingSessionID = decodeUInt32(data + offset);
+    std::cout << "ExchangeTradingSessionID: " << snapshot.ExchangeTradingSessionID << std::endl;
     offset += 4;
 
-    //uint16_t blockLength = decodeUInt16(data + offset);
+    uint16_t blockLength = decodeUInt16(data + offset);
+    std::cout << "BlockLength: " << blockLength << std::endl;
     offset += 2;
 
     uint8_t noMDEntries = data[offset];
+    std::cout << "NoMDEntries: " << static_cast<int>(noMDEntries) << std::endl;
     offset += 1;
+
+    std::cout << "Current offset after header: " << offset << " bytes" << std::endl;
 
     snapshot.entries.reserve(noMDEntries);
 
     for (int i = 0; i < noMDEntries; ++i) {
+        std::cout << "Decoding entry " << i + 1 << " of " << static_cast<int>(noMDEntries) << std::endl;
+
+        if (offset + blockLength > length) {
+            std::cerr << "Error: Buffer overflow at entry " << i + 1 << std::endl;
+            std::cerr << "Remaining bytes: " << length - offset << ", Required: " << blockLength << std::endl;
+            throw std::runtime_error("Buffer overflow in OrderBookSnapshot");
+        }
+
         OrderBookEntry entry;
-        
+
         entry.MDEntryID = decodeInt64(data + offset);
+        std::cout << "  MDEntryID: " << entry.MDEntryID << std::endl;
         offset += 8;
 
         entry.TransactTime = decodeUInt64(data + offset);
+        std::cout << "  TransactTime: " << entry.TransactTime << std::endl;
         offset += 8;
 
         entry.MDEntryPx = decodeDecimal5(data + offset);
+        std::cout << "  MDEntryPx: " << entry.MDEntryPx.mantissa << "e-5" << std::endl;
         offset += 8;
 
         entry.MDEntrySize = decodeInt64(data + offset);
+        std::cout << "  MDEntrySize: " << entry.MDEntrySize << std::endl;
         offset += 8;
 
         entry.TradeID = decodeInt64(data + offset);
+        std::cout << "  TradeID: " << entry.TradeID << std::endl;
         offset += 8;
 
         entry.MDFlags = decodeUInt64(data + offset);
+        std::cout << "  MDFlags: 0x" << std::hex << entry.MDFlags << std::dec << std::endl;
         offset += 8;
 
         entry.MDFlags2 = decodeUInt64(data + offset);
+        std::cout << "  MDFlags2: 0x" << std::hex << entry.MDFlags2 << std::dec << std::endl;
         offset += 8;
 
         entry.EntryType = static_cast<MDEntryType>(data[offset]);
+        std::cout << "  EntryType: " << static_cast<char>(entry.EntryType) << std::endl;
         offset += 1;
 
         snapshot.entries.push_back(entry);
+
+        std::cout << "  Current offset after entry: " << offset << " bytes" << std::endl;
     }
 
-std::cout << "OrderBookSnapshot: "
-          << "SecurityID=" << snapshot.SecurityID
-          << ", LastMsgSeqNumProcessed=" << snapshot.LastMsgSeqNumProcessed
-          << ", RptSeq=" << snapshot.RptSeq
-          << ", ExchangeTradingSessionID=" << snapshot.ExchangeTradingSessionID
-          << ", Entries=" << snapshot.entries.size() << std::endl;
-for (const auto& entry : snapshot.entries) {
-    std::cout << "  Entry: MDEntryID=" << entry.MDEntryID
-              << ", MDEntryPx=" << entry.MDEntryPx
-              << ", MDEntrySize=" << entry.MDEntrySize
-              << ", EntryType=" << static_cast<char>(entry.EntryType) << std::endl;
-}    
+    std::cout << "Successfully decoded OrderBookSnapshot with " << snapshot.entries.size() << " entries" << std::endl;
+    std::cout << "Final offset: " << offset << " bytes" << std::endl;
 
     return snapshot;
 }
