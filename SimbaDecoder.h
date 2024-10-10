@@ -135,6 +135,16 @@ private:
     std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedMessages;
 
     std::optional<DecodedMessage> processFragment(const uint8_t* data, size_t length, uint16_t msgFlags, uint64_t transactTime, uint16_t templateId);
+
+    std::optional<DecodedMessage> processIncrementalPacket(const uint8_t* data, size_t length,
+                                                                     bool isLastFragment, uint16_t templateId,
+                                                                     const std::pair<int32_t, uint16_t>& key);
+
+    std::optional<DecodedMessage> processSnapshotPacket(const uint8_t* data, size_t length,
+                                                                  bool isStartOfSnapshot, bool isEndOfSnapshot,
+                                                                  uint16_t templateId,
+                                                                  const std::pair<int32_t, uint16_t>& key);
+
     std::optional<DecodedMessage> decodeFullMessage(const uint8_t* data, size_t length, uint16_t templateId);
 
     // Specialized decoding methods

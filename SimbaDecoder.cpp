@@ -276,45 +276,67 @@ std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data,
 
     std::pair<int32_t, uint16_t> key(securityId, templateId);
 
-    // Проверяем, является ли сообщение одним из тех, которые могут быть фрагментированы
-    bool canBeFragmented = (templateId == 14 || templateId == 15 || templateId == 16 || templateId == 17);
+    if (isIncrementalPacket) {
+        return processIncrementalPacket(data, length, isLastFragment, templateId, key);
+    } else {
+        return processSnapshotPacket(data, length, isStartOfSnapshot, isEndOfSnapshot, templateId, key);
+    }
+}
 
-    // Изменяем условие для определения фрагментированного сообщения
-    bool isFragmented = canBeFragmented && (isStartOfSnapshot || isEndOfSnapshot || (isIncrementalPacket && !isLastFragment));
-
-    if (isFragmented) {
-        std::cout << "Processing as part of fragmented message" << std::endl;
+std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8_t* data, size_t length,
+                                                                     bool isLastFragment, uint16_t templateId,
+                                                                     const std::pair<int32_t, uint16_t>& key) {
+    if (!isLastFragment) {
+        // Добавляем фрагмент к текущей транзакции
         auto& fragMsg = fragmentedMessages[key];
-        
-        if (isStartOfSnapshot) {
-            // Начало нового снэпшота, очищаем предыдущие фрагменты
-            fragMsg.fragments.clear();
-        }
-        
         fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-        fragMsg.transactTime = transactTime;
-        fragMsg.templateId = templateId;
-
-        std::cout << "  Fragment added. Total fragments: " << fragMsg.fragments.size() << std::endl;
-
-        if (!isLastFragment && !isEndOfSnapshot) {
-            std::cout << "Waiting for more fragments" << std::endl;
-            return std::nullopt;
+        std::cout << "Added incremental fragment. Total fragments: " << fragMsg.fragments.size() << std::endl;
+        return std::nullopt;
+    } else {
+        // Последний фрагмент или целое сообщение
+        std::vector<uint8_t> fullMessage(data, data + length);
+        if (fragmentedMessages.count(key) > 0) {
+            auto& fragMsg = fragmentedMessages[key];
+            for (const auto& fragment : fragMsg.fragments) {
+                fullMessage.insert(fullMessage.begin(), fragment.begin(), fragment.end());
+            }
+            fragmentedMessages.erase(key);
         }
+        std::cout << "Processing complete incremental message. Size: " << fullMessage.size() << std::endl;
+        return decodeFullMessage(fullMessage.data(), fullMessage.size(), templateId);
+    }
+}
 
-        // Собираем полное сообщение из фрагментов
+std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t* data, size_t length,
+                                                                  bool isStartOfSnapshot, bool isEndOfSnapshot,
+                                                                  uint16_t templateId,
+                                                                  const std::pair<int32_t, uint16_t>& key) {
+    if (isStartOfSnapshot && isEndOfSnapshot) {
+        // Полный снапшот в одном пакете
+        std::cout << "Processing complete snapshot in single packet" << std::endl;
+        return decodeFullMessage(data, length, templateId);
+    } else if (isStartOfSnapshot) {
+        // Начало нового снапшота
+        fragmentedMessages[key].fragments.clear();
+        fragmentedMessages[key].fragments.push_back(std::vector<uint8_t>(data, data + length));
+        std::cout << "Started new snapshot. Fragment size: " << length << std::endl;
+        return std::nullopt;
+    } else if (isEndOfSnapshot) {
+        // Конец снапшота
+        auto& fragMsg = fragmentedMessages[key];
+        fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
         std::vector<uint8_t> fullMessage;
         for (const auto& fragment : fragMsg.fragments) {
             fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
         }
         fragmentedMessages.erase(key);
-
-        std::cout << "Assembled full message from fragments. Size: " << fullMessage.size() << std::endl;
+        std::cout << "Completed snapshot. Total size: " << fullMessage.size() << std::endl;
         return decodeFullMessage(fullMessage.data(), fullMessage.size(), templateId);
     } else {
-        // Обработка нефрагментированных сообщений
-        std::cout << "Processing as non-fragmented message" << std::endl;
-        return decodeFullMessage(data, length, templateId);
+        // Промежуточный фрагмент снапшота
+        fragmentedMessages[key].fragments.push_back(std::vector<uint8_t>(data, data + length));
+        std::cout << "Added snapshot fragment. Total fragments: " << fragmentedMessages[key].fragments.size() << std::endl;
+        return std::nullopt;
     }
 }
 
