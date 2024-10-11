@@ -101,12 +101,16 @@ struct OrderBookSnapshot {
         uint16_t version;
     };
 
-    struct FragmentedMessage {
-        std::vector<std::vector<uint8_t>> fragments;
-        uint64_t transactTime;
-        uint16_t templateId;
-        bool isComplete;
-    };
+struct FragmentedMessage {
+    std::vector<std::vector<uint8_t>> fragments;
+    size_t totalSize;
+    uint64_t transactTime;
+    uint16_t templateId;
+    bool isComplete;
+
+    FragmentedMessage() : totalSize(0), transactTime(0), templateId(0), isComplete(false) {}
+};
+
 #pragma pack(pop)
 
 using DecodedMessage = std::variant<OrderUpdate, OrderExecution, OrderBookSnapshot>;
@@ -148,9 +152,10 @@ private:
     std::optional<DecodedMessage> decodeFullMessage(const uint8_t* data, size_t length, uint16_t templateId);
 
     // Specialized decoding methods
-    [[nodiscard]] OrderUpdate decodeOrderUpdate(const uint8_t* data, size_t length) const;
-    [[nodiscard]] OrderExecution decodeOrderExecution(const uint8_t* data, size_t length) const;
-    [[nodiscard]] OrderBookSnapshot decodeOrderBookSnapshot(const uint8_t* data, size_t length) const;
+    std::pair<std::vector<OrderUpdate>, size_t> decodeOrderUpdate(const uint8_t* data, size_t length) const;
+    std::pair<std::vector<OrderExecution>, size_t> decodeOrderExecution(const uint8_t* data, size_t length) const;
+    std::pair<std::vector<OrderBookSnapshot>, size_t> decodeOrderBookSnapshot(const uint8_t* data, size_t length) const;
+    OrderBookEntry decodeOrderBookEntry(const uint8_t* data, size_t length) const;
 
     // Helper methods for decoding
     static uint16_t decodeUInt16(const uint8_t* data) noexcept;

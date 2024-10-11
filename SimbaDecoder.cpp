@@ -311,226 +311,297 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
                                                                   bool isStartOfSnapshot, bool isEndOfSnapshot,
                                                                   uint16_t templateId,
                                                                   const std::pair<int32_t, uint16_t>& key) {
-    if (isStartOfSnapshot && isEndOfSnapshot) {
-        // Полный снапшот в одном пакете
-        std::cout << "Processing complete snapshot in single packet" << std::endl;
-        return decodeFullMessage(data, length, templateId);
-    } else if (isStartOfSnapshot) {
+    auto& fragMsg = fragmentedMessages[key];
+    
+    if (isStartOfSnapshot) {
         // Начало нового снапшота
-        fragmentedMessages[key].fragments.clear();
-        fragmentedMessages[key].fragments.push_back(std::vector<uint8_t>(data, data + length));
+        fragMsg = FragmentedMessage();
         std::cout << "Started new snapshot. Fragment size: " << length << std::endl;
-        return std::nullopt;
-    } else if (isEndOfSnapshot) {
-        // Конец снапшота
-        auto& fragMsg = fragmentedMessages[key];
-        fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-        std::vector<uint8_t> fullMessage;
-        for (const auto& fragment : fragMsg.fragments) {
-            fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
-        }
-        fragmentedMessages.erase(key);
-        std::cout << "Completed snapshot. Total size: " << fullMessage.size() << std::endl;
-        return decodeFullMessage(fullMessage.data(), fullMessage.size(), templateId);
-    } else {
-        // Промежуточный фрагмент снапшота
-        fragmentedMessages[key].fragments.push_back(std::vector<uint8_t>(data, data + length));
-        std::cout << "Added snapshot fragment. Total fragments: " << fragmentedMessages[key].fragments.size() << std::endl;
-        return std::nullopt;
     }
+
+    // Добавляем текущий фрагмент
+    fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
+    fragMsg.totalSize += length;
+    std::cout << "Added snapshot fragment. Total fragments: " << fragMsg.fragments.size() 
+              << ", Total size: " << fragMsg.totalSize << std::endl;
+
+    std::cout << "Fragment size: " << length << ", Total size so far: " << fragMsg.totalSize << std::endl;
+
+    if (isEndOfSnapshot) {
+        // Конец снапшота, собираем все фрагменты
+        std::vector<uint8_t> fullMessage(fragMsg.totalSize);
+        size_t offset = 0;
+        for (const auto& fragment : fragMsg.fragments) {
+            std::copy(fragment.begin(), fragment.end(), fullMessage.begin() + offset);
+            offset += fragment.size();
+        }
+        std::cout << "Completed snapshot. Total size: " << fullMessage.size() << std::endl;
+
+        // Очищаем фрагменты и декодируем полное сообщение
+        fragmentedMessages.erase(key);
+        return decodeFullMessage(fullMessage.data(), fullMessage.size(), templateId);
+    }
+
+    return std::nullopt;
 }
 
 std::optional<DecodedMessage> SimbaDecoder::decodeFullMessage(const uint8_t* data, size_t length, uint16_t templateId) {
+    std::cout << "Decoding full message. Length: " << length << ", TemplateId: " << templateId << std::endl;
+
+    std::optional<DecodedMessage> decodedMessage;
+    size_t processedSize = 0;
+
     switch (templateId) {
         case 15:
-            return decodeOrderUpdate(data, length);
+            {
+                auto [updates, size] = decodeOrderUpdate(data, length);
+                processedSize = size;
+                if (!updates.empty()) {
+                    decodedMessage = DecodedMessage(updates[0]);  // Возвращаем первое обновление
+                }
+            }
+            break;
         case 16:
-            return decodeOrderExecution(data, length);
+            {
+                auto [executions, size] = decodeOrderExecution(data, length);
+                processedSize = size;
+                if (!executions.empty()) {
+                    decodedMessage = DecodedMessage(executions[0]);  // Возвращаем первое исполнение
+                }
+            }
+            break;
         case 17:
-            return decodeOrderBookSnapshot(data, length);
+            {
+                auto [snapshots, size] = decodeOrderBookSnapshot(data, length);
+                processedSize = size;
+                if (!snapshots.empty()) {
+                    decodedMessage = snapshots[0];  // Берем первый снэпшот
+                }
+            }
+            break;
         default:
             std::cerr << "Unknown template ID: " << templateId << std::endl;
             return std::nullopt;
     }
-}
 
-OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
-    if (length < 50) {
-        throw std::runtime_error("OrderUpdate message too short");
+    if (decodedMessage) {
+        if (processedSize == length) {
+            std::cout << "Successfully decoded entire message with templateId = " << templateId << std::endl;
+        } else {
+            std::cout << "Warning: Processed size (" << processedSize << ") does not match expected size (" 
+                      << length << ") for templateId = " << templateId << std::endl;
+        }
+    } else {
+        std::cerr << "Failed to decode message with templateId = " << templateId << std::endl;
     }
 
-    OrderUpdate update;
-    size_t offset = 0;
-
-    update.MDEntryID = decodeInt64(data + offset);
-    offset += 8;
-
-    update.MDEntryPx = decodeDecimal5(data + offset);
-    offset += 8;
-
-    update.MDEntrySize = decodeInt64(data + offset);
-    offset += 8;
-
-    update.MDFlags = decodeUInt64(data + offset);
-    offset += 8;
-
-    update.MDFlags2 = decodeUInt64(data + offset);
-    offset += 8;
-
-    update.SecurityID = decodeInt32(data + offset);
-    offset += 4;
-
-    update.RptSeq = decodeUInt32(data + offset);
-    offset += 4;
-
-    update.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
-    offset += 1;
-
-    update.EntryType = static_cast<MDEntryType>(data[offset]);
-
-    // Отладочный вывод
-    std::cout << "Decoded OrderUpdate: "
-              << "MDEntryID=" << update.MDEntryID
-              << ", MDEntryPx=" << update.MDEntryPx
-              << ", MDEntrySize=" << update.MDEntrySize
-              << ", SecurityID=" << update.SecurityID
-              << ", RptSeq=" << update.RptSeq
-              << ", UpdateAction=" << static_cast<int>(update.UpdateAction)
-              << ", EntryType=" << static_cast<char>(update.EntryType)
-              << std::endl;
-
-    return update;
+    return decodedMessage;
 }
 
-OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t /*length*/) const {
-    OrderExecution execution;
+std::pair<std::vector<OrderUpdate>, size_t> SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
+    std::vector<OrderUpdate> updates;
     size_t offset = 0;
 
-    execution.MDEntryID = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.MDEntryPx = decodeDecimal5(data + offset);
-    offset += 8;
-
-    execution.MDEntrySize = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.LastPx = decodeDecimal5(data + offset);
-    offset += 8;
-
-    execution.LastQty = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.TradeID = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.MDFlags = decodeUInt64(data + offset);
-    offset += 8;
-
-    execution.MDFlags2 = decodeUInt64(data + offset);
-    offset += 8;
-
-    execution.SecurityID = decodeInt32(data + offset);
-    offset += 4;
-
-    execution.RptSeq = decodeUInt32(data + offset);
-    offset += 4;
-
-    execution.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
-    offset += 1;
-
-    execution.EntryType = static_cast<MDEntryType>(data[offset]);
-
-    return execution;
-}
-
-OrderBookSnapshot SimbaDecoder::decodeOrderBookSnapshot(const uint8_t* data, size_t length) const {
-    OrderBookSnapshot snapshot;
-    size_t offset = 0;
-
-    std::cout << "Decoding OrderBookSnapshot..." << std::endl;
-    std::cout << "Total message length: " << length << " bytes" << std::endl;
-
-    snapshot.SecurityID = decodeInt32(data + offset);
-    std::cout << "SecurityID: " << snapshot.SecurityID << std::endl;
-    offset += 4;
-
-    snapshot.LastMsgSeqNumProcessed = decodeUInt32(data + offset);
-    std::cout << "LastMsgSeqNumProcessed: " << snapshot.LastMsgSeqNumProcessed << std::endl;
-    offset += 4;
-
-    snapshot.RptSeq = decodeUInt32(data + offset);
-    std::cout << "RptSeq: " << snapshot.RptSeq << std::endl;
-    offset += 4;
-
-    snapshot.ExchangeTradingSessionID = decodeUInt32(data + offset);
-    std::cout << "ExchangeTradingSessionID: " << snapshot.ExchangeTradingSessionID << std::endl;
-    offset += 4;
-
-    uint16_t blockLength = decodeUInt16(data + offset);
-    std::cout << "BlockLength: " << blockLength << std::endl;
-    offset += 2;
-
-    uint8_t noMDEntries = data[offset];
-    std::cout << "NoMDEntries: " << static_cast<int>(noMDEntries) << std::endl;
-    offset += 1;
-
-    std::cout << "Current offset after header: " << offset << " bytes" << std::endl;
-
-    snapshot.entries.reserve(noMDEntries);
-
-    for (int i = 0; i < noMDEntries; ++i) {
-        std::cout << "Decoding entry " << i + 1 << " of " << static_cast<int>(noMDEntries) << std::endl;
-
-        if (offset + blockLength > length) {
-            std::cerr << "Error: Buffer overflow at entry " << i + 1 << std::endl;
-            std::cerr << "Remaining bytes: " << length - offset << ", Required: " << blockLength << std::endl;
-            throw std::runtime_error("Buffer overflow in OrderBookSnapshot");
-        }
-
-        OrderBookEntry entry;
-
-        entry.MDEntryID = decodeInt64(data + offset);
-        std::cout << "  MDEntryID: " << entry.MDEntryID << std::endl;
+    while (offset + 50 <= length) {  // 50 - минимальный размер OrderUpdate
+        OrderUpdate update;
+        
+        update.MDEntryID = decodeInt64(data + offset);
         offset += 8;
 
-        entry.TransactTime = decodeUInt64(data + offset);
-        std::cout << "  TransactTime: " << entry.TransactTime << std::endl;
+        update.MDEntryPx = decodeDecimal5(data + offset);
         offset += 8;
 
-        entry.MDEntryPx = decodeDecimal5(data + offset);
-        std::cout << "  MDEntryPx: " << entry.MDEntryPx.mantissa << "e-5" << std::endl;
+        update.MDEntrySize = decodeInt64(data + offset);
         offset += 8;
 
-        entry.MDEntrySize = decodeInt64(data + offset);
-        std::cout << "  MDEntrySize: " << entry.MDEntrySize << std::endl;
+        update.MDFlags = decodeUInt64(data + offset);
         offset += 8;
 
-        entry.TradeID = decodeInt64(data + offset);
-        std::cout << "  TradeID: " << entry.TradeID << std::endl;
+        update.MDFlags2 = decodeUInt64(data + offset);
         offset += 8;
 
-        entry.MDFlags = decodeUInt64(data + offset);
-        std::cout << "  MDFlags: 0x" << std::hex << entry.MDFlags << std::dec << std::endl;
-        offset += 8;
+        update.SecurityID = decodeInt32(data + offset);
+        offset += 4;
 
-        entry.MDFlags2 = decodeUInt64(data + offset);
-        std::cout << "  MDFlags2: 0x" << std::hex << entry.MDFlags2 << std::dec << std::endl;
-        offset += 8;
+        update.RptSeq = decodeUInt32(data + offset);
+        offset += 4;
 
-        entry.EntryType = static_cast<MDEntryType>(data[offset]);
-        std::cout << "  EntryType: " << static_cast<char>(entry.EntryType) << std::endl;
+        update.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
         offset += 1;
 
-        snapshot.entries.push_back(entry);
+        update.EntryType = static_cast<MDEntryType>(data[offset]);
+        offset += 1;
 
-        std::cout << "  Current offset after entry: " << offset << " bytes" << std::endl;
+        updates.push_back(update);
+
+        // Отладочный вывод
+        std::cout << "Decoded OrderUpdate: "
+                  << "MDEntryID=" << update.MDEntryID
+                  << ", MDEntryPx=" << update.MDEntryPx
+                  << ", MDEntrySize=" << update.MDEntrySize
+                  << ", SecurityID=" << update.SecurityID
+                  << ", RptSeq=" << update.RptSeq
+                  << ", UpdateAction=" << static_cast<int>(update.UpdateAction)
+                  << ", EntryType=" << static_cast<char>(update.EntryType)
+                  << std::endl;
     }
 
-    std::cout << "Successfully decoded OrderBookSnapshot with " << snapshot.entries.size() << " entries" << std::endl;
-    std::cout << "Final offset: " << offset << " bytes" << std::endl;
+    if (offset < length) {
+        std::cout << "Warning: " << (length - offset) << " bytes remaining after decoding OrderUpdates" << std::endl;
+    }
 
-    return snapshot;
+    return {updates, offset};
+}
+
+std::pair<std::vector<OrderExecution>, size_t> SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
+    std::vector<OrderExecution> executions;
+    size_t offset = 0;
+    const size_t executionSize = 74; // Суммарный размер всех полей OrderExecution
+
+    while (offset + executionSize <= length) {
+        OrderExecution execution;
+        
+        execution.MDEntryID = decodeInt64(data + offset);
+        offset += 8;
+        
+        execution.MDEntryPx = decodeDecimal5(data + offset);
+        offset += 8;
+        
+        execution.MDEntrySize = decodeInt64(data + offset);
+        offset += 8;
+        
+        execution.LastPx = decodeDecimal5(data + offset);
+        offset += 8;
+                
+        execution.LastQty = decodeInt64(data + offset);
+        offset += 8;
+        
+        execution.TradeID = decodeInt64(data + offset);
+        offset += 8;
+        
+        execution.MDFlags = decodeUInt64(data + offset);
+        offset += 8;
+
+        execution.MDFlags2 = decodeUInt64(data + offset);
+        offset += 8;
+
+        execution.SecurityID = decodeInt32(data + offset);
+        offset += 4;
+
+        execution.RptSeq = decodeUInt32(data + offset);
+        offset += 4;
+
+        execution.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
+        offset += 1;
+
+        execution.EntryType = static_cast<MDEntryType>(data[offset]);
+        offset += 1;
+
+        executions.push_back(execution);
+
+        // Отладочный вывод
+        std::cout << "Decoded OrderExecution: "
+                  << "MDEntryID=" << execution.MDEntryID
+                  << ", LastPx=" << execution.LastPx
+                  << ", LastQty=" << execution.LastQty
+                  << ", TradeID=" << execution.TradeID
+                  << ", SecurityID=" << execution.SecurityID
+                  << ", RptSeq=" << execution.RptSeq
+                  << ", UpdateAction=" << static_cast<int>(execution.UpdateAction)
+                  << ", EntryType=" << static_cast<char>(execution.EntryType)
+                  << std::endl;
+    }
+
+    if (offset < length) {
+        std::cout << "Warning: " << (length - offset) << " bytes remaining after decoding OrderExecutions" << std::endl;
+    }
+
+    return {executions, offset};
+}
+
+std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookSnapshot(const uint8_t* data, size_t length) const {
+    std::vector<OrderBookSnapshot> snapshots;
+    size_t offset = 0;
+
+    while (offset < length) {
+        OrderBookSnapshot snapshot;
+        size_t initialOffset = offset;
+
+        // Декодирование заголовка
+        if (length - offset < 19) {
+            std::cerr << "Insufficient data for snapshot header at offset " << offset << std::endl;
+            break;
+        }
+
+        snapshot.SecurityID = decodeInt32(data + offset);
+        offset += 4;
+        snapshot.LastMsgSeqNumProcessed = decodeUInt32(data + offset);
+        offset += 4;
+        snapshot.RptSeq = decodeUInt32(data + offset);
+        offset += 4;
+        snapshot.ExchangeTradingSessionID = decodeUInt32(data + offset);
+        offset += 4;
+
+        uint16_t blockLength = decodeUInt16(data + offset);
+        offset += 2;
+        uint8_t noMDEntries = data[offset];
+        offset += 1;
+
+        std::cout << "Decoding snapshot for SecurityID: " << snapshot.SecurityID
+                  << ", NoMDEntries: " << static_cast<int>(noMDEntries)
+                  << ", BlockLength: " << blockLength << std::endl;
+
+        for (int i = 0; i < noMDEntries && offset < length; ++i) {
+            if (length - offset < blockLength) {
+                std::cerr << "Insufficient data for entry " << i + 1 << " at offset " << offset << std::endl;
+                break;
+            }
+
+            OrderBookEntry entry = decodeOrderBookEntry(data + offset, blockLength);
+            snapshot.entries.push_back(entry);
+            offset += blockLength;
+        }
+
+        std::cout << "Snapshot decoded. Entries: " << snapshot.entries.size()
+                  << ", Bytes processed: " << (offset - initialOffset) << std::endl;
+
+        snapshots.push_back(snapshot);
+    }
+
+    std::cout << "Total snapshots decoded: " << snapshots.size()
+              << ", Total bytes processed: " << offset
+              << " out of " << length << std::endl;
+
+    return {snapshots, offset};
+}
+
+OrderBookEntry SimbaDecoder::decodeOrderBookEntry(const uint8_t* data, size_t length) const {
+    OrderBookEntry entry;
+    size_t offset = 0;
+
+    entry.MDEntryID = decodeInt64(data + offset);
+    offset += 8;
+    entry.TransactTime = decodeUInt64(data + offset);
+    offset += 8;
+    entry.MDEntryPx = decodeDecimal5(data + offset);
+    offset += 8;
+    entry.MDEntrySize = decodeInt64(data + offset);
+    offset += 8;
+    entry.TradeID = decodeInt64(data + offset);
+    offset += 8;
+    entry.MDFlags = decodeUInt64(data + offset);
+    offset += 8;
+    entry.MDFlags2 = decodeUInt64(data + offset);
+    offset += 8;
+    entry.EntryType = static_cast<MDEntryType>(data[offset]);
+    offset += 1;
+
+    std::cout << "  MDEntryID: " << entry.MDEntryID
+              << ", MDEntryPx: " << entry.MDEntryPx.mantissa << "e-5"
+              << ", MDEntrySize: " << entry.MDEntrySize
+              << ", EntryType: " << static_cast<char>(entry.EntryType) << std::endl;
+
+    return entry;
 }
 
 uint16_t SimbaDecoder::decodeUInt16(const uint8_t* data) noexcept {
