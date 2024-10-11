@@ -134,7 +134,7 @@ public:
 private:
     MarketDataPacketHeader decodeMarketDataPacketHeader(const uint8_t* data);
     IncrementalPacketHeader decodeIncrementalPacketHeader(const uint8_t* data);
-    SBEHeader decodeSBEHeader(const uint8_t* data);
+    SBEHeader decodeSBEHeader(const uint8_t* data) const;
 
     std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedMessages;
 
@@ -149,11 +149,11 @@ private:
                                                                   uint16_t templateId,
                                                                   const std::pair<int32_t, uint16_t>& key);
 
-    std::optional<DecodedMessage> decodeFullMessage(const uint8_t* data, size_t length, uint16_t templateId);
+    std::optional<DecodedMessage> decodeIncrementalPacket(const uint8_t* data, size_t length) const;
 
     // Specialized decoding methods
-    std::pair<std::vector<OrderUpdate>, size_t> decodeOrderUpdate(const uint8_t* data, size_t length) const;
-    std::pair<std::vector<OrderExecution>, size_t> decodeOrderExecution(const uint8_t* data, size_t length) const;
+    OrderUpdate decodeOrderUpdate(const uint8_t* data, size_t length) const;
+    OrderExecution decodeOrderExecution(const uint8_t* data, size_t length) const;
     std::pair<std::vector<OrderBookSnapshot>, size_t> decodeOrderBookSnapshot(const uint8_t* data, size_t length) const;
     OrderBookEntry decodeOrderBookEntry(const uint8_t* data, size_t length) const;
 
