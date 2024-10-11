@@ -288,12 +288,6 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
         SBEHeader sbeHeader = decodeSBEHeader(data + offset);
         offset += sizeof(SBEHeader);
 
-        std::cout << "Decoded SBE Header:" << std::endl
-                  << "  BlockLength: " << sbeHeader.blockLength << std::endl
-                  << "  TemplateID: " << sbeHeader.templateId << std::endl
-                  << "  SchemaID: " << sbeHeader.schemaId << std::endl
-                  << "  Version: " << sbeHeader.version << std::endl;
-
         if (offset + sbeHeader.blockLength > length) {
             std::cout << "Insufficient data for message block. Remaining: " 
                       << (length - offset) << ", Required: " << sbeHeader.blockLength << std::endl;
@@ -454,13 +448,16 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
     std::vector<OrderBookSnapshot> snapshots;
     size_t offset = 0;
 
+    SBEHeader sbeHeader = decodeSBEHeader(data + offset); //we can skip it
+    offset += sizeof(SBEHeader);
+
     while (offset < length) {
         OrderBookSnapshot snapshot;
         size_t initialOffset = offset;
 
         // Декодирование заголовка
         if (length - offset < 19) {
-            std::cerr << "Insufficient data for snapshot header at offset " << offset << std::endl;
+            std::cout << "Insufficient data for snapshot header at offset " << offset << std::endl;
             break;
         }
 
@@ -484,7 +481,7 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
 
         for (int i = 0; i < noMDEntries && offset < length; ++i) {
             if (length - offset < blockLength) {
-                std::cerr << "Insufficient data for entry " << i + 1 << " at offset " << offset << std::endl;
+                std::cout << "Insufficient data for orderbook entry " << i + 1 << " at offset " << offset << std::endl;
                 break;
             }
 
