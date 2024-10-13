@@ -88,23 +88,23 @@ void parsePackets(SimbaDecoder& decoder) {
             throw std::runtime_error("Failed to read packet data");
         }
 
-        std::cout << "Packet " << ++packetCount << ":" << std::endl;
-        std::cout << "  Timestamp: " << packetHeader.ts_sec << "." << packetHeader.ts_usec << std::endl;
-        std::cout << "  Captured Length: " << packetHeader.incl_len << std::endl;
-        std::cout << "  Actual Length: " << packetHeader.orig_len << std::endl;
+        //std::cout << "Packet " << ++packetCount << ":" << std::endl;
+        //std::cout << "  Timestamp: " << packetHeader.ts_sec << "." << packetHeader.ts_usec << std::endl;
+        //std::cout << "  Captured Length: " << packetHeader.incl_len << std::endl;
+        //std::cout << "  Actual Length: " << packetHeader.orig_len << std::endl;
 
         // Parse Ethernet header
         if (packetData.size() < sizeof(EthernetHeader)) {
-            std::cout << "  Packet too short for Ethernet header" << std::endl;
+            //std::cout << "  Packet too short for Ethernet header" << std::endl;
             continue;
         }
         const EthernetHeader* ethHeader = reinterpret_cast<const EthernetHeader*>(packetData.data());
         uint16_t etherType = ntohs(ethHeader->etherType);
-        std::cout << "  Ether Type: 0x" << std::hex << etherType << std::dec << std::endl;
+        //std::cout << "  Ether Type: 0x" << std::hex << etherType << std::dec << std::endl;
 
         // Parse IP header
         if (etherType != 0x0800 || packetData.size() < sizeof(EthernetHeader) + sizeof(IPHeader)) {
-            std::cout << "  Not an IPv4 packet or too short for IP header" << std::endl;
+            //std::cout << "  Not an IPv4 packet or too short for IP header" << std::endl;
             continue;
         }
         const IPHeader* ipHeader = reinterpret_cast<const IPHeader*>(packetData.data() + sizeof(EthernetHeader));
@@ -112,25 +112,25 @@ void parsePackets(SimbaDecoder& decoder) {
         char srcIP[INET_ADDRSTRLEN], destIP[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &ipHeader->srcIP, srcIP, INET_ADDRSTRLEN);
         inet_ntop(AF_INET, &ipHeader->destIP, destIP, INET_ADDRSTRLEN);
-        std::cout << "  IP: " << srcIP << " -> " << destIP << std::endl;
-        std::cout << "  Protocol: " << static_cast<int>(ipHeader->protocol) << std::endl;
+        //std::cout << "  IP: " << srcIP << " -> " << destIP << std::endl;
+        //std::cout << "  Protocol: " << static_cast<int>(ipHeader->protocol) << std::endl;
 
         // Parse UDP header
         if (ipHeader->protocol != 17 || packetData.size() < sizeof(EthernetHeader) + ipHeaderLength + sizeof(UDPHeader)) {
-            std::cout << "  Not a UDP packet or too short for UDP header" << std::endl;
+            //std::cout << "  Not a UDP packet or too short for UDP header" << std::endl;
             continue;
         }
         const UDPHeader* udpHeader = reinterpret_cast<const UDPHeader*>(packetData.data() + sizeof(EthernetHeader) + ipHeaderLength);
         uint16_t srcPort = ntohs(udpHeader->srcPort);
         uint16_t destPort = ntohs(udpHeader->destPort);
-        std::cout << "  UDP: " << srcPort << " -> " << destPort << std::endl;
+        //std::cout << "  UDP: " << srcPort << " -> " << destPort << std::endl;
 
         // Calculate offset to SIMBA data
         size_t simbaOffset = sizeof(EthernetHeader) + ipHeaderLength + sizeof(UDPHeader);
         size_t simbaLength = packetData.size() - simbaOffset;
 
-        std::cout << "  SIMBA data offset: " << simbaOffset << std::endl;
-        std::cout << "  SIMBA data length: " << simbaLength << std::endl;
+        //std::cout << "  SIMBA data offset: " << simbaOffset << std::endl;
+        //std::cout << "  SIMBA data length: " << simbaLength << std::endl;
 
         // Print first few bytes of the SIMBA data
         //std::cout << "  First 32 bytes of SIMBA data: ";
@@ -146,18 +146,18 @@ void parsePackets(SimbaDecoder& decoder) {
             std::visit([](auto&& msg) {
                 using T = std::decay_t<decltype(msg)>;
                 if constexpr (std::is_same_v<T, OrderUpdate>) {
-                    std::cout << "  Received OrderUpdate" << std::endl;
+                    //std::cout << "  Received OrderUpdate" << std::endl;
                 } else if constexpr (std::is_same_v<T, OrderExecution>) {
-                    std::cout << "  Received OrderExecution" << std::endl;
+                    //std::cout << "  Received OrderExecution" << std::endl;
                 } else if constexpr (std::is_same_v<T, OrderBookSnapshot>) {
-                    std::cout << "  Received OrderBookSnapshot" << std::endl;
+                    //std::cout << "  Received OrderBookSnapshot" << std::endl;
                 }
             }, *result);
         } else {
-            std::cout << "  Failed to decode message" << std::endl;
+            //std::cout << "  Failed to decode message" << std::endl;
         }
 
-        std::cout << std::endl;
+        //std::cout << std::endl;
 
         //if (packetCount >= 10) break;  // Limit to first 10 packets for now
     }
@@ -168,7 +168,7 @@ private:
     PCAPFileHeader fileHeader;
 
 void readFileHeader() {
-    std::cout << "Attempting to read PCAP file header..." << std::endl;
+    //std::cout << "Attempting to read PCAP file header..." << std::endl;
     
     // Read first 24 bytes directly
     char buffer[24];
@@ -177,11 +177,11 @@ void readFileHeader() {
         throw std::runtime_error("Failed to read first 24 bytes. Bytes read: " + std::to_string(file.gcount()));
     }
 
-    std::cout << "First 24 bytes: ";
-    for (int i = 0; i < 24; ++i) {
-        std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(buffer[i])) << " ";
-    }
-    std::cout << std::dec << std::endl;
+    //std::cout << "First 24 bytes: ";
+    //for (int i = 0; i < 24; ++i) {
+    //    std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(buffer[i])) << " ";
+    //}
+    //std::cout << std::dec << std::endl;
 
     // Reset file position
     file.seekg(0, std::ios::beg);
@@ -192,7 +192,7 @@ void readFileHeader() {
         throw std::runtime_error("Failed to read PCAP file header. Bytes read: " + std::to_string(file.gcount()));
     }
 
-    std::cout << "Magic number: 0x" << std::hex << fileHeader.magic_number << std::dec << std::endl;
+    //std::cout << "Magic number: 0x" << std::hex << fileHeader.magic_number << std::dec << std::endl;
 
     // Try both little-endian and big-endian interpretations
     PCAPFileHeader leHeader = fileHeader;
@@ -207,34 +207,34 @@ void readFileHeader() {
     beHeader.snaplen = __builtin_bswap32(beHeader.snaplen);
     beHeader.network = __builtin_bswap32(beHeader.network);
 
-    std::cout << "Little-endian interpretation:" << std::endl;
-    std::cout << "Magic number: 0x" << std::hex << leHeader.magic_number << std::dec << std::endl;
-    std::cout << "Version: " << leHeader.version_major << "." << leHeader.version_minor << std::endl;
-    std::cout << "Timezone offset: " << leHeader.thiszone << std::endl;
-    std::cout << "Timestamp accuracy: " << leHeader.sigfigs << std::endl;
-    std::cout << "Snapshot length: " << leHeader.snaplen << std::endl;
-    std::cout << "Network type: " << leHeader.network << std::endl;
+    //std::cout << "Little-endian interpretation:" << std::endl;
+    //std::cout << "Magic number: 0x" << std::hex << leHeader.magic_number << std::dec << std::endl;
+    //std::cout << "Version: " << leHeader.version_major << "." << leHeader.version_minor << std::endl;
+    //std::cout << "Timezone offset: " << leHeader.thiszone << std::endl;
+    //std::cout << "Timestamp accuracy: " << leHeader.sigfigs << std::endl;
+    //std::cout << "Snapshot length: " << leHeader.snaplen << std::endl;
+    //std::cout << "Network type: " << leHeader.network << std::endl;
 
-    std::cout << "\nBig-endian interpretation:" << std::endl;
-    std::cout << "Magic number: 0x" << std::hex << beHeader.magic_number << std::dec << std::endl;
-    std::cout << "Version: " << beHeader.version_major << "." << beHeader.version_minor << std::endl;
-    std::cout << "Timezone offset: " << beHeader.thiszone << std::endl;
-    std::cout << "Timestamp accuracy: " << beHeader.sigfigs << std::endl;
-    std::cout << "Snapshot length: " << beHeader.snaplen << std::endl;
-    std::cout << "Network type: " << beHeader.network << std::endl;
+    //std::cout << "\nBig-endian interpretation:" << std::endl;
+    //std::cout << "Magic number: 0x" << std::hex << beHeader.magic_number << std::dec << std::endl;
+    //std::cout << "Version: " << beHeader.version_major << "." << beHeader.version_minor << std::endl;
+    //std::cout << "Timezone offset: " << beHeader.thiszone << std::endl;
+    //std::cout << "Timestamp accuracy: " << beHeader.sigfigs << std::endl;
+    //std::cout << "Snapshot length: " << beHeader.snaplen << std::endl;
+    //std::cout << "Network type: " << beHeader.network << std::endl;
 
     // Choose the interpretation that looks more correct
     if (beHeader.magic_number == 0xa1b2c3d4 || beHeader.magic_number == 0xa1b23c4d) {
         fileHeader = beHeader;
-        std::cout << "\nUsing big-endian interpretation" << std::endl;
+        //std::cout << "\nUsing big-endian interpretation" << std::endl;
     } else if (leHeader.magic_number == 0xa1b2c3d4 || leHeader.magic_number == 0xa1b23c4d) {
         fileHeader = leHeader;
-        std::cout << "\nUsing little-endian interpretation" << std::endl;
+        //std::cout << "\nUsing little-endian interpretation" << std::endl;
     } else {
         throw std::runtime_error("Invalid PCAP file format. Unrecognized magic number.");
     }
 
-    std::cout << "PCAP file header read successfully" << std::endl;
+    //std::cout << "PCAP file header read successfully" << std::endl;
 }    
 
 void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& decoder) {
@@ -264,16 +264,16 @@ void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& 
     size_t simba_data_length = ntohs(udpHeader->length) - sizeof(UDPHeader);
 
     // Вывод отладочной информации
-    std::cout << "Packet details:" << std::endl;
-    std::cout << "  Ether Type: 0x" << std::hex << ntohs(ethHeader->etherType) << std::dec << std::endl;
-    std::cout << "  IP Protocol: " << static_cast<int>(ipHeader->protocol) << std::endl;
-    std::cout << "  Source IP: " << (ntohl(ipHeader->srcIP) >> 24) << "." << ((ntohl(ipHeader->srcIP) >> 16) & 0xFF) << "."
-              << ((ntohl(ipHeader->srcIP) >> 8) & 0xFF) << "." << (ntohl(ipHeader->srcIP) & 0xFF) << std::endl;
-    std::cout << "  Dest IP: " << (ntohl(ipHeader->destIP) >> 24) << "." << ((ntohl(ipHeader->destIP) >> 16) & 0xFF) << "."
-              << ((ntohl(ipHeader->destIP) >> 8) & 0xFF) << "." << (ntohl(ipHeader->destIP) & 0xFF) << std::endl;
-    std::cout << "  Source Port: " << ntohs(udpHeader->srcPort) << std::endl;
-    std::cout << "  Dest Port: " << ntohs(udpHeader->destPort) << std::endl;
-    std::cout << "  SIMBA data length: " << simba_data_length << std::endl;
+    //std::cout << "Packet details:" << std::endl;
+    //std::cout << "  Ether Type: 0x" << std::hex << ntohs(ethHeader->etherType) << std::dec << std::endl;
+    //std::cout << "  IP Protocol: " << static_cast<int>(ipHeader->protocol) << std::endl;
+    //std::cout << "  Source IP: " << (ntohl(ipHeader->srcIP) >> 24) << "." << ((ntohl(ipHeader->srcIP) >> 16) & 0xFF) << "."
+    //          << ((ntohl(ipHeader->srcIP) >> 8) & 0xFF) << "." << (ntohl(ipHeader->srcIP) & 0xFF) << std::endl;
+    //std::cout << "  Dest IP: " << (ntohl(ipHeader->destIP) >> 24) << "." << ((ntohl(ipHeader->destIP) >> 16) & 0xFF) << "."
+    //          << ((ntohl(ipHeader->destIP) >> 8) & 0xFF) << "." << (ntohl(ipHeader->destIP) & 0xFF) << std::endl;
+    //std::cout << "  Source Port: " << ntohs(udpHeader->srcPort) << std::endl;
+    //std::cout << "  Dest Port: " << ntohs(udpHeader->destPort) << std::endl;
+    //std::cout << "  SIMBA data length: " << simba_data_length << std::endl;
 
     // Декодируем сообщение SIMBA SPECTRA
     auto decoded_message = decoder.decodeMessage(simba_data, simba_data_length);
@@ -291,7 +291,7 @@ void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& 
             }
         }, *decoded_message);
     } else {
-        std::cout << "Failed to decode message" << std::endl;
+        //std::cout << "Failed to decode message" << std::endl;
     }
 }
 
