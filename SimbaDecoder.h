@@ -8,6 +8,11 @@
 #include <optional>
 #include <variant>
 #include <map>
+#include <unordered_map>
+#include <chrono>
+#include <ostream>
+#include <iomanip>
+#include <iostream>
 
 enum class MDUpdateAction : uint8_t {
     New = 0,
@@ -108,6 +113,9 @@ struct FragmentedMessage {
     uint16_t templateId;
     bool isComplete;
 
+    int fragmentCount;
+    std::chrono::steady_clock::time_point lastUpdateTime;
+
     FragmentedMessage() : totalSize(0), transactTime(0), templateId(0), isComplete(false) {}
 };
 
@@ -131,13 +139,55 @@ public:
     // Method to save decoded data
     void saveDecodedData(const std::string& filename) const;
 
+    void printStatistics() {
+        std::cout << "Total snapshots processed: " << totalSnapshotsProcessed << std::endl;
+        std::cout << "Mixed snapshots detected: " << mixedSnapshotsDetected << std::endl;
+        if (totalSnapshotsProcessed > 0) {
+            double mixedPercentage = (static_cast<double>(mixedSnapshotsDetected) / totalSnapshotsProcessed) * 100.0;
+            std::cout << "Percentage of mixed snapshots: " << std::fixed << std::setprecision(2)
+                      << mixedPercentage << "%" << std::endl;
+        }
+    }
+
 private:
     MarketDataPacketHeader decodeMarketDataPacketHeader(const uint8_t* data);
     IncrementalPacketHeader decodeIncrementalPacketHeader(const uint8_t* data);
     SBEHeader decodeSBEHeader(const uint8_t* data) const;
 
-    std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedMessages;
+    std::unordered_map<int32_t, FragmentedMessage> fragmentedMessages;
+    std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedIncrementalMessages;
 
+    int totalSnapshotsProcessed = 0;
+    int mixedSnapshotsDetected = 0;
+    int32_t lastProcessedSecurityId = -1;
+
+    std::string getTimeStamp() {
+        auto now = std::chrono::system_clock::now();
+        auto nowAsTimeT = std::chrono::system_clock::to_time_t(now);
+        auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()) % 1000;
+        
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&nowAsTimeT), "%Y-%m-%d %H:%M:%S")
+           << '.' << std::setfill('0') << std::setw(3) << nowMs.count();
+        
+        return ss.str();
+    }
+
+/*    
+    void cleanupOldSnapshots() {
+        auto now = std::chrono::steady_clock::now();
+        for (auto it = fragmentedMessages.begin(); it != fragmentedMessages.end();) {
+            if (now - it->second.lastUpdateTime > std::chrono::seconds(30)) {
+                std::cout << getTimeStamp() << " Cleaning up old snapshot for SecurityID "
+                          << it->first << ", Fragments: " << it->second.fragmentCount << std::endl;
+                it = fragmentedMessages.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+*/
     std::optional<DecodedMessage> processFragment(const uint8_t* data, size_t length, uint16_t msgFlags, uint64_t transactTime, uint16_t templateId);
 
     std::optional<DecodedMessage> processIncrementalPacket(const uint8_t* data, size_t length,
@@ -147,7 +197,7 @@ private:
     std::optional<DecodedMessage> processSnapshotPacket(const uint8_t* data, size_t length,
                                                                   bool isStartOfSnapshot, bool isEndOfSnapshot,
                                                                   uint16_t templateId,
-                                                                  const std::pair<int32_t, uint16_t>& key);
+                                                                  int32_t securityId);
 
     std::optional<DecodedMessage> decodeIncrementalPacket(const uint8_t* data, size_t length) const;
 

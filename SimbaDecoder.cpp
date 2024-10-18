@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <iostream>
 #include <cstring>
+#include <cassert>
 
 std::ostream& operator<<(std::ostream& os, const Decimal5& d) {
     return os << d.toDouble();
@@ -206,7 +207,7 @@ std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data,
     if (isIncrementalPacket) {
         return processIncrementalPacket(data, length, isLastFragment, templateId, key);
     } else {
-        return processSnapshotPacket(data, length, isStartOfSnapshot, isEndOfSnapshot, templateId, key);
+        return processSnapshotPacket(data, length, isStartOfSnapshot, isEndOfSnapshot, templateId, securityId);
     }
 }
 
@@ -215,19 +216,19 @@ std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8
                                                                      const std::pair<int32_t, uint16_t>& key) {
     if (!isLastFragment) {
         // Добавляем фрагмент к текущей транзакции
-        auto& fragMsg = fragmentedMessages[key];
+        auto& fragMsg = fragmentedIncrementalMessages[key];
         fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
         //std::cout << "Added incremental fragment. Total fragments: " << fragMsg.fragments.size() << std::endl;
         return std::nullopt;
     } else {
         // Последний фрагмент или целое сообщение
         std::vector<uint8_t> fullMessage(data, data + length);
-        if (fragmentedMessages.count(key) > 0) {
-            auto& fragMsg = fragmentedMessages[key];
+        if (fragmentedIncrementalMessages.count(key) > 0) {
+            auto& fragMsg = fragmentedIncrementalMessages[key];
             for (const auto& fragment : fragMsg.fragments) {
                 fullMessage.insert(fullMessage.begin(), fragment.begin(), fragment.end());
             }
-            fragmentedMessages.erase(key);
+            fragmentedIncrementalMessages.erase(key);
         }
         //std::cout << "Processing complete incremental message. Size: " << fullMessage.size() << std::endl;
         
@@ -235,10 +236,13 @@ std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8
     }
 }
 
+/*
 std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t* data, size_t length,
                                                                   bool isStartOfSnapshot, bool isEndOfSnapshot,
                                                                   uint16_t templateId,
-                                                                  const std::pair<int32_t, uint16_t>& key) {
+                                                                  int32_t securityId) {
+    assert(templateId == 17 && "Unexpected templateId for OrderBookSnapshot");
+
     if (isStartOfSnapshot && isEndOfSnapshot) {
         // Полный снапшот в одном пакете
         //std::cout << "Processing complete snapshot in single packet" << std::endl;
@@ -248,18 +252,18 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
         }
     } else if (isStartOfSnapshot) {
         // Начало нового снапшота
-        fragmentedMessages[key].fragments.clear();
-        fragmentedMessages[key].fragments.push_back(std::vector<uint8_t>(data, data + length));
+        fragmentedMessages[securityId].fragments.clear();
+        fragmentedMessages[securityId].fragments.push_back(std::vector<uint8_t>(data, data + length));
         //std::cout << "Started new snapshot. Fragment size: " << length << std::endl;
     } else if (isEndOfSnapshot) {
         // Конец снапшота
-        auto& fragMsg = fragmentedMessages[key];
+        auto& fragMsg = fragmentedMessages[securityId];
         fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
         std::vector<uint8_t> fullMessage;
         for (const auto& fragment : fragMsg.fragments) {
             fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
         }
-        fragmentedMessages.erase(key);
+        fragmentedMessages.erase(securityId);
         //std::cout << "Completed snapshot. Total size: " << fullMessage.size() << std::endl;
         auto [snapshots, size] = decodeOrderBookSnapshot(fullMessage.data(), fullMessage.size());
         if (!snapshots.empty()) {
@@ -267,12 +271,75 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
         }
     } else {
         // Промежуточный фрагмент снапшота
-        fragmentedMessages[key].fragments.push_back(std::vector<uint8_t>(data, data + length));
-        //std::cout << "Added snapshot fragment. Total fragments: " << fragmentedMessages[key].fragments.size() << std::endl;
+        fragmentedMessages[securityId].fragments.push_back(std::vector<uint8_t>(data, data + length));
+        //std::cout << "Added snapshot fragment. Total fragments: " << fragmentedMessages[securityId].fragments.size() << std::endl;
     }
 
     return std::nullopt;
-}
+}*/
+
+std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t* data, size_t length,
+                                                        bool isStartOfSnapshot, bool isEndOfSnapshot,
+                                                        uint16_t templateId,
+                                                        int32_t securityId) {
+        assert(templateId == 17 && "Unexpected templateId for OrderBookSnapshot");
+
+        std::cout << getTimeStamp() << " Processing snapshot packet: "
+                  << "SecurityID=" << securityId
+                  << ", Start=" << isStartOfSnapshot
+                  << ", End=" << isEndOfSnapshot
+                  << ", Length=" << length << std::endl;
+
+        if (lastProcessedSecurityId != -1 && lastProcessedSecurityId != securityId) {
+            std::cout << getTimeStamp() << " WARNING: Switched from SecurityID "
+                      << lastProcessedSecurityId << " to " << securityId << std::endl;
+            mixedSnapshotsDetected++;
+        }
+        lastProcessedSecurityId = securityId;
+
+        if (isStartOfSnapshot && isEndOfSnapshot) {
+            std::cout << getTimeStamp() << " Processing complete snapshot in single packet" << std::endl;
+            auto [snapshots, size] = decodeOrderBookSnapshot(data, length);
+            if (!snapshots.empty()) {
+                totalSnapshotsProcessed++;
+                return DecodedMessage(snapshots[0]);
+            }
+        } else if (isStartOfSnapshot) {
+            std::cout << getTimeStamp() << " Started new snapshot for SecurityID " << securityId << std::endl;
+            fragmentedMessages[securityId].fragments.clear();
+            fragmentedMessages[securityId].fragments.push_back(std::vector<uint8_t>(data, data + length));
+            fragmentedMessages[securityId].fragmentCount = 1;
+            fragmentedMessages[securityId].lastUpdateTime = std::chrono::steady_clock::now();
+        } else if (isEndOfSnapshot) {
+            std::cout << getTimeStamp() << " Completing snapshot for SecurityID " << securityId << std::endl;
+            auto& fragMsg = fragmentedMessages[securityId];
+            fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
+            fragMsg.fragmentCount++;
+
+            std::vector<uint8_t> fullMessage;
+            for (const auto& fragment : fragMsg.fragments) {
+                fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
+            }
+            fragmentedMessages.erase(securityId);
+
+            std::cout << getTimeStamp() << " Completed snapshot. Total size: " << fullMessage.size()
+                      << ", Fragments: " << fragMsg.fragmentCount << std::endl;
+
+            auto [snapshots, size] = decodeOrderBookSnapshot(fullMessage.data(), fullMessage.size());
+            if (!snapshots.empty()) {
+                totalSnapshotsProcessed++;
+                return DecodedMessage(snapshots[0]);
+            }
+        } else {
+            std::cout << getTimeStamp() << " Added intermediate fragment for SecurityID " << securityId << std::endl;
+            auto& fragMsg = fragmentedMessages[securityId];
+            fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
+            fragMsg.fragmentCount++;
+            fragMsg.lastUpdateTime = std::chrono::steady_clock::now();
+        }
+
+        return std::nullopt;
+    }
 
 std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_t* data, size_t length) const {
     std::vector<OrderUpdate> updates;
@@ -486,16 +553,17 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
             break;
         }
 
-        for (int i = 0; i < noMDEntries; ++i) {
-            if (blockLength < MIN_ENTRY_SIZE) {
-                std::cout << "Error: Invalid blockLength for entry " << i << std::endl;
-                break;
-            }
+	snapshot.entries.reserve(noMDEntries);
 
-            OrderBookEntry entry = decodeOrderBookEntry(data + offset, blockLength);
-            snapshot.entries.push_back(entry);
-            offset += blockLength;
-        }
+	for (int i = 0; i < noMDEntries; ++i) {
+    		if (blockLength < MIN_ENTRY_SIZE) {
+        		std::cout << "Error: Invalid blockLength for entry " << i << std::endl;
+        		break;
+    		}
+
+    		snapshot.entries.emplace_back(decodeOrderBookEntry(data + offset, blockLength));
+    		offset += blockLength;
+	}
 
         //std::cout << "Snapshot decoded. Entries: " << snapshot.entries.size()
         //          << ", Bytes processed: " << (offset - initialOffset) << std::endl;

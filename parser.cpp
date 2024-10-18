@@ -307,6 +307,7 @@ int main(int argc, char* argv[]) {
         PCAPParser parser(argv[1]);
         SimbaDecoder decoder;
         parser.parsePackets(decoder);
+	decoder.printStatistics();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
