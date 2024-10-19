@@ -204,10 +204,8 @@ std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data,
     int32_t securityId = decodeInt32(data);
     LOG_DEBUG("  SecurityId: " << securityId );
 
-    std::pair<int32_t, uint16_t> key(securityId, templateId);
-
     if (isIncrementalPacket) {
-        return processIncrementalPacket(data, length, isLastFragment, templateId, key);
+        return processIncrementalPacket(data, length, isLastFragment, templateId, securityId);
     } else {
         return processSnapshotPacket(data, length, isStartOfSnapshot, isEndOfSnapshot, templateId, securityId);
     }
@@ -215,26 +213,33 @@ std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data,
 
 std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8_t* data, size_t length,
                                                                      bool isLastFragment, uint16_t templateId,
-                                                                     const std::pair<int32_t, uint16_t>& key) {
+                                                                     int32_t securityId) {
+    auto& fragments = (templateId == 15) ? orderUpdateFragments : orderExecutionFragments;
+    auto& buffer = fragments[securityId].data;
+
     if (!isLastFragment) {
-        // Adding fragment to the current transaction
-        auto& fragMsg = fragmentedIncrementalMessages[key];
-        fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-        LOG_DEBUG("Added incremental fragment. Total fragments: " << fragMsg.fragments.size() );
+        buffer.insert(buffer.end(), data, data + length);
+
+        LOG_DEBUG("Added incremental fragment for SecurityID " << securityId
+                  << ". Total size: " << buffer.size());
+
         return std::nullopt;
     } else {
-        // Last fragment or complete message
-        std::vector<uint8_t> fullMessage(data, data + length);
-        if (fragmentedIncrementalMessages.count(key) > 0) {
-            auto& fragMsg = fragmentedIncrementalMessages[key];
-            for (const auto& fragment : fragMsg.fragments) {
-                fullMessage.insert(fullMessage.begin(), fragment.begin(), fragment.end());
-            }
-            fragmentedIncrementalMessages.erase(key);
+        if (!buffer.empty()) {
+            buffer.insert(buffer.end(), data, data + length);
+
+            LOG_DEBUG("Processing complete incremental message for SecurityID "
+                      << securityId << ". Size: " << buffer.size());
+
+            auto result = decodeIncrementalPacket(buffer.data(), buffer.size());
+            fragments.erase(securityId);
+            return result;
+        } else {
+            LOG_DEBUG("Processing complete incremental message for SecurityID "
+                      << securityId << ". Size: " << length);
+
+            return decodeIncrementalPacket(data, length);
         }
-        LOG_DEBUG("Processing complete incremental message. Size: " << fullMessage.size() );
-        
-        return decodeIncrementalPacket(fullMessage.data(), fullMessage.size());
     }
 }
 
@@ -379,18 +384,17 @@ OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) 
     update.EntryType = static_cast<MDEntryType>(data[offset]);
     offset += 1;
 
-/*    
-    LOG_DEBUG("Decoded OrderUpdate:" )
-              << "  MDEntryID: " << update.MDEntryID )
-              << "  MDEntryPx: " << update.MDEntryPx.mantissa << "e" << update.MDEntryPx.exponent )
-              << "  MDEntrySize: " << update.MDEntrySize )
-              << "  MDFlags: 0x" << std::hex << update.MDFlags << std::dec )
-              << "  MDFlags2: 0x" << std::hex << update.MDFlags2 << std::dec )
-              << "  SecurityID: " << update.SecurityID )
-              << "  RptSeq: " << update.RptSeq )
-              << "  UpdateAction: " << static_cast<int>(update.UpdateAction) )
+    
+    LOG_DEBUG("Decoded OrderUpdate:" << "  MDEntryID: " << update.MDEntryID 
+              << "  MDEntryPx: " << update.MDEntryPx.mantissa << "e" << update.MDEntryPx.exponent 
+              << "  MDEntrySize: " << update.MDEntrySize 
+              << "  MDFlags: 0x" << std::hex << update.MDFlags << std::dec 
+              << "  MDFlags2: 0x" << std::hex << update.MDFlags2 << std::dec 
+              << "  SecurityID: " << update.SecurityID 
+              << "  RptSeq: " << update.RptSeq 
+              << "  UpdateAction: " << static_cast<int>(update.UpdateAction)
               << "  EntryType: " << static_cast<char>(update.EntryType) );
-*/
+
     return update;
 }
 
@@ -440,21 +444,21 @@ OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t le
     execution.EntryType = static_cast<MDEntryType>(data[offset]);
     offset += 1;
 
-/*    
-    LOG_DEBUG << "Decoded OrderExecution:" )
-              << "  MDEntryID: " << execution.MDEntryID )
-              << "  MDEntryPx: " << execution.MDEntryPx.mantissa << "e" << execution.MDEntryPx.exponent )
-              << "  MDEntrySize: " << execution.MDEntrySize )
-              << "  LastPx: " << execution.LastPx.mantissa << "e" << execution.LastPx.exponent )
-              << "  LastQty: " << execution.LastQty )
-              << "  TradeID: " << execution.TradeID )
-              << "  MDFlags: 0x" << std::hex << execution.MDFlags << std::dec )
-              << "  MDFlags2: 0x" << std::hex << execution.MDFlags2 << std::dec )
-              << "  SecurityID: " << execution.SecurityID )
-              << "  RptSeq: " << execution.RptSeq )
-              << "  UpdateAction: " << static_cast<int>(execution.UpdateAction) )
+    
+    LOG_DEBUG("Decoded OrderExecution:"
+              << "  MDEntryID: " << execution.MDEntryID
+              << "  MDEntryPx: " << execution.MDEntryPx.mantissa << "e" << execution.MDEntryPx.exponent
+              << "  MDEntrySize: " << execution.MDEntrySize
+              << "  LastPx: " << execution.LastPx.mantissa << "e" << execution.LastPx.exponent
+              << "  LastQty: " << execution.LastQty
+              << "  TradeID: " << execution.TradeID
+              << "  MDFlags: 0x" << std::hex << execution.MDFlags << std::dec
+              << "  MDFlags2: 0x" << std::hex << execution.MDFlags2 << std::dec
+              << "  SecurityID: " << execution.SecurityID
+              << "  RptSeq: " << execution.RptSeq
+              << "  UpdateAction: " << static_cast<int>(execution.UpdateAction)
               << "  EntryType: " << static_cast<char>(execution.EntryType) );
-*/
+
     return execution;
 }
 

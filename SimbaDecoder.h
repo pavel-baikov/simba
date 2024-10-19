@@ -146,7 +146,17 @@ private:
     IncrementalPacketHeader decodeIncrementalPacketHeader(const uint8_t* data);
     SBEHeader decodeSBEHeader(const uint8_t* data) const;
 
-    std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedIncrementalMessages;
+
+    static constexpr size_t INITIAL_FRAGMENT_SIZE = 1024 * 64; // 64KB initial size for fragments
+
+    struct FragmentBuffer {
+        std::vector<uint8_t> data;
+        
+        FragmentBuffer() { data.reserve(INITIAL_FRAGMENT_SIZE); }
+    };
+
+    std::unordered_map<int32_t, FragmentBuffer> orderUpdateFragments;
+    std::unordered_map<int32_t, FragmentBuffer> orderExecutionFragments;
 
     static constexpr size_t INITIAL_RESERVE_SIZE = 1024 * 1024;
     std::unordered_map<int32_t, std::vector<uint8_t>> fragmentBuffer;    
@@ -159,9 +169,7 @@ private:
 
     std::optional<DecodedMessage> processFragment(const uint8_t* data, size_t length, uint16_t msgFlags, uint64_t transactTime, uint16_t templateId);
 
-    std::optional<DecodedMessage> processIncrementalPacket(const uint8_t* data, size_t length,
-                                                                     bool isLastFragment, uint16_t templateId,
-                                                                     const std::pair<int32_t, uint16_t>& key);
+    std::optional<DecodedMessage> processIncrementalPacket(const uint8_t* data, size_t length, bool isLastFragment, uint16_t templateId,int32_t securityId);
 
     std::optional<DecodedMessage> processSnapshotPacket(const uint8_t* data, size_t length,
                                                                   bool isStartOfSnapshot, bool isEndOfSnapshot,
