@@ -5,6 +5,8 @@
 #include <cstring>
 #include <cassert>
 
+#include "log.h"
+
 std::ostream& operator<<(std::ostream& os, const Decimal5& d) {
     return os << d.toDouble();
 }
@@ -35,18 +37,18 @@ MarketDataPacketHeader SimbaDecoder::decodeMarketDataPacketHeader(const uint8_t*
     header.sendingTime = decodeUInt64(data + offset);
 
     // Логирование распарсенных данных
-    //std::cout << "Decoded Market Data Packet Header:" << std::endl;
-    //std::cout << "  MsgSeqNum: " << header.msgSeqNum << std::endl;
-    //std::cout << "  MsgSize: " << header.msgSize << std::endl;
-    //std::cout << "  MsgFlags: 0x" << std::hex << header.msgFlags << std::dec << std::endl;
-    //std::cout << "  SendingTime: " << header.sendingTime << std::endl;
+    LOG_DEBUG("Decoded Market Data Packet Header:" );
+    LOG_DEBUG("  MsgSeqNum: " << header.msgSeqNum );
+    LOG_DEBUG("  MsgSize: " << header.msgSize );
+    LOG_DEBUG("  MsgFlags: 0x" << std::hex << header.msgFlags << std::dec );
+    LOG_DEBUG("  SendingTime: " << header.sendingTime );
 
     // Дополнительная расшифровка MsgFlags
-    //std::cout << "  MsgFlags details:" << std::endl;
-    //std::cout << "    LastFragment: " << ((header.msgFlags & 0x01) ? "Yes" : "No") << std::endl;
-    //std::cout << "    StartOfSnapshot: " << ((header.msgFlags & 0x02) ? "Yes" : "No") << std::endl;
-    //std::cout << "    EndOfSnapshot: " << ((header.msgFlags & 0x04) ? "Yes" : "No") << std::endl;
-    //std::cout << "    IncrementalPacket: " << ((header.msgFlags & 0x08) ? "Yes" : "No") << std::endl;
+    LOG_DEBUG("  MsgFlags details:" );
+    LOG_DEBUG("    LastFragment: " << ((header.msgFlags & 0x01) ? "Yes" : "No") );
+    LOG_DEBUG("    StartOfSnapshot: " << ((header.msgFlags & 0x02) ? "Yes" : "No") );
+    LOG_DEBUG("    EndOfSnapshot: " << ((header.msgFlags & 0x04) ? "Yes" : "No") );
+    LOG_DEBUG("    IncrementalPacket: " << ((header.msgFlags & 0x08) ? "Yes" : "No") );
 
     return header;
 }
@@ -57,18 +59,18 @@ IncrementalPacketHeader SimbaDecoder::decodeIncrementalPacketHeader(const uint8_
     header.exchangeTradingSessionID = decodeUInt32(data + 8);
 
     // Логирование распарсенных данных
-    //std::cout << "Decoded Incremental Packet Header:" << std::endl;
-    //std::cout << "  TransactTime: " << header.transactTime << std::endl;
-    //std::cout << "  ExchangeTradingSessionID: " << header.exchangeTradingSessionID << std::endl;
+    LOG_DEBUG("Decoded Incremental Packet Header:" );
+    LOG_DEBUG("  TransactTime: " << header.transactTime );
+    LOG_DEBUG("  ExchangeTradingSessionID: " << header.exchangeTradingSessionID );
 
     // Дополнительная информация о TransactTime
     time_t seconds = header.transactTime / 1000000000; // Наносекунды в секунды
     struct tm *timeinfo = localtime(&seconds);
     char buffer[80];
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
-    //std::cout << "  TransactTime (human-readable): " << buffer 
-    //          << "." << std::setfill('0') << std::setw(9) 
-    //          << header.transactTime % 1000000000 << std::endl;
+    LOG_DEBUG("  TransactTime (human-readable): " << buffer 
+              << "." << std::setfill('0') << std::setw(9) 
+              << header.transactTime % 1000000000 );
 
     return header;
 }
@@ -89,27 +91,27 @@ SBEHeader SimbaDecoder::decodeSBEHeader(const uint8_t* data) const {
     header.version = decodeUInt16(data + offset);
 
     // Логирование распарсенных данных
-    //std::cout << "Decoded SBE Header:" << std::endl;
-    //std::cout << "  BlockLength: " << header.blockLength << std::endl;
-    //std::cout << "  TemplateID: " << header.templateId << std::endl;
-    //std::cout << "  SchemaID: " << header.schemaId << std::endl;
-    //std::cout << "  Version: " << header.version << std::endl;
+    LOG_DEBUG("Decoded SBE Header:" );
+    LOG_DEBUG("  BlockLength: " << header.blockLength );
+    LOG_DEBUG("  TemplateID: " << header.templateId );
+    LOG_DEBUG("  SchemaID: " << header.schemaId );
+    LOG_DEBUG("  Version: " << header.version );
 
     // Дополнительная информация о TemplateID
-    //std::cout << "  TemplateID details:" << std::endl;
+    LOG_DEBUG("  TemplateID details:" );
     switch (header.templateId) {
         case 15:
-            //std::cout << "    Message type: OrderUpdate" << std::endl;
+            LOG_DEBUG("    Message type: OrderUpdate" );
             break;
         case 16:
-            //std::cout << "    Message type: OrderExecution" << std::endl;
+            LOG_DEBUG("    Message type: OrderExecution" );
             break;
         case 17:
-            //std::cout << "    Message type: OrderBookSnapshot" << std::endl;
+            LOG_DEBUG("    Message type: OrderBookSnapshot" );
             break;
         default:
 	    break;
-            //std::cout << "    Message type: Unknown" << std::endl;
+            LOG_DEBUG("    Message type: Unknown" );
     }
 
     return header;
@@ -117,53 +119,53 @@ SBEHeader SimbaDecoder::decodeSBEHeader(const uint8_t* data) const {
 
 std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, size_t length) {
     if (length < sizeof(MarketDataPacketHeader)) {
-        //std::cout << "Message too short to contain a valid header" << std::endl;
+        LOG_WARNING("Message too short to contain a valid header" );
         return std::nullopt;
     }
 
-    //std::cout << "message: ";
+    //LOG_DEBUG << "message: ";
     //for (size_t i = 0; i < length; ++i) {
-    //    std::cout << std::hex << std::setw(2) << std::setfill('0')
+    //    LOG_DEBUG << std::hex << std::setw(2) << std::setfill('0')
     //              << static_cast<int>(data[i]) << " ";
     //}
-    //std::cout << std::dec << std::endl;
+    //LOG_DEBUG << std::dec );
 
     MarketDataPacketHeader mdHeader = decodeMarketDataPacketHeader(data);
     size_t offset = sizeof(MarketDataPacketHeader);
 
-    //std::cout << "sizeof(MarketDataPacketHeader) = " << sizeof(MarketDataPacketHeader) << std::endl;
+    LOG_DEBUG("sizeof(MarketDataPacketHeader) = " << sizeof(MarketDataPacketHeader) );
 
     bool isIncrementalPacket = (mdHeader.msgFlags & 0x08) != 0;
     bool isLastFragment = (mdHeader.msgFlags & 0x01) != 0;
     bool isStartOfSnapshot = (mdHeader.msgFlags & 0x02) != 0;
     bool isEndOfSnapshot = (mdHeader.msgFlags & 0x04) != 0;
 
-    //std::cout << "Message Flags Analysis:" << std::endl;
-    //std::cout << "  Raw MsgFlags: 0x" << std::hex << std::setw(4) << std::setfill('0') << mdHeader.msgFlags << std::dec << std::endl;
-    //std::cout << "  IsIncrementalPacket: " << (isIncrementalPacket ? "Yes" : "No") << std::endl;
-    //std::cout << "  IsLastFragment: " << (isLastFragment ? "Yes" : "No") << std::endl;
-    //std::cout << "  IsStartOfSnapshot: " << (isStartOfSnapshot ? "Yes" : "No") << std::endl;
-    //std::cout << "  IsEndOfSnapshot: " << (isEndOfSnapshot ? "Yes" : "No") << std::endl;
+    LOG_DEBUG("Message Flags Analysis:" );
+    LOG_DEBUG("  Raw MsgFlags: 0x" << std::hex << std::setw(4) << std::setfill('0') << mdHeader.msgFlags << std::dec );
+    LOG_DEBUG("  IsIncrementalPacket: " << (isIncrementalPacket ? "Yes" : "No") );
+    LOG_DEBUG("  IsLastFragment: " << (isLastFragment ? "Yes" : "No") );
+    LOG_DEBUG("  IsStartOfSnapshot: " << (isStartOfSnapshot ? "Yes" : "No") );
+    LOG_DEBUG("  IsEndOfSnapshot: " << (isEndOfSnapshot ? "Yes" : "No") );
 
     uint64_t transactTime = 0;
     if (isIncrementalPacket) {
         if (length < offset + sizeof(IncrementalPacketHeader)) {
-            //std::cout << "Message too short to contain Incremental Packet Header" << std::endl;
+            LOG_WARNING("Message too short to contain Incremental Packet Header" );
             return std::nullopt;
         }
         IncrementalPacketHeader incHeader = decodeIncrementalPacketHeader(data + offset);
         transactTime = incHeader.transactTime;
         offset += sizeof(IncrementalPacketHeader);
 
-        //std::cout << "offset = " << offset << " sizeof(IncrementalPacketHeader) = " << sizeof(IncrementalPacketHeader) << std::endl;
+        LOG_DEBUG("offset = " << offset << " sizeof(IncrementalPacketHeader) = " << sizeof(IncrementalPacketHeader) );
     }
 
     if (length < offset + sizeof(SBEHeader)) {
-        //std::cout << "Message too short to contain SBE Header" << std::endl;
+        LOG_WARNING("Message too short to contain SBE Header" );
         return std::nullopt;
     }
 
-    //std::cout << "Initial SBE Header:" << std::endl;
+    LOG_DEBUG("Initial SBE Header:" );
     SBEHeader sbeHeader = decodeSBEHeader(data + offset);
 
     // Раннее отсеивание ненужных типов сообщений
@@ -173,7 +175,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
         case 17: // OrderBookSnapshot
             break;
         default:
-            //std::cout << "Ignoring message with TemplateID: " << sbeHeader.templateId << std::endl;
+            LOG_DEBUG("Ignoring message with TemplateID: " << sbeHeader.templateId );
             return std::nullopt;
     }
 
@@ -183,24 +185,24 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
 std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data, size_t length,
                                                             uint16_t msgFlags, uint64_t transactTime,
                                                             uint16_t templateId) {
-    //std::cout << "Entering processFragment" << std::endl;
-    //std::cout << "  Length: " << length << std::endl;
-    //std::cout << "  MsgFlags: 0x" << std::hex << msgFlags << std::dec << std::endl;
-    //std::cout << "  TransactTime: " << transactTime << std::endl;
-    //std::cout << "  TemplateId: " << templateId << std::endl;
+    LOG_DEBUG("Entering processFragment" );
+    LOG_DEBUG("  Length: " << length );
+    LOG_DEBUG("  MsgFlags: 0x" << std::hex << msgFlags << std::dec );
+    LOG_DEBUG("  TransactTime: " << transactTime );
+    LOG_DEBUG("  TemplateId: " << templateId );
 
     bool isLastFragment = (msgFlags & 0x01) != 0;
     bool isStartOfSnapshot = (msgFlags & 0x02) != 0;
     bool isEndOfSnapshot = (msgFlags & 0x04) != 0;
     bool isIncrementalPacket = (msgFlags & 0x08) != 0;
 
-    //std::cout << "  IsLastFragment: " << (isLastFragment ? "Yes" : "No") << std::endl;
-    //std::cout << "  IsStartOfSnapshot: " << (isStartOfSnapshot ? "Yes" : "No") << std::endl;
-    //std::cout << "  IsEndOfSnapshot: " << (isEndOfSnapshot ? "Yes" : "No") << std::endl;
-    //std::cout << "  IsIncrementalPacket: " << (isIncrementalPacket ? "Yes" : "No") << std::endl;
+    LOG_DEBUG("  IsLastFragment: " << (isLastFragment ? "Yes" : "No") );
+    LOG_DEBUG("  IsStartOfSnapshot: " << (isStartOfSnapshot ? "Yes" : "No") );
+    LOG_DEBUG("  IsEndOfSnapshot: " << (isEndOfSnapshot ? "Yes" : "No") );
+    LOG_DEBUG("  IsIncrementalPacket: " << (isIncrementalPacket ? "Yes" : "No") );
 
     int32_t securityId = decodeInt32(data);
-    //std::cout << "  SecurityId: " << securityId << std::endl;
+    LOG_DEBUG("  SecurityId: " << securityId );
 
     std::pair<int32_t, uint16_t> key(securityId, templateId);
 
@@ -218,7 +220,7 @@ std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8
         // Добавляем фрагмент к текущей транзакции
         auto& fragMsg = fragmentedIncrementalMessages[key];
         fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-        //std::cout << "Added incremental fragment. Total fragments: " << fragMsg.fragments.size() << std::endl;
+        LOG_DEBUG("Added incremental fragment. Total fragments: " << fragMsg.fragments.size() );
         return std::nullopt;
     } else {
         // Последний фрагмент или целое сообщение
@@ -230,116 +232,58 @@ std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8
             }
             fragmentedIncrementalMessages.erase(key);
         }
-        //std::cout << "Processing complete incremental message. Size: " << fullMessage.size() << std::endl;
+        LOG_DEBUG("Processing complete incremental message. Size: " << fullMessage.size() );
         
         return decodeIncrementalPacket(fullMessage.data(), fullMessage.size());
     }
 }
 
-/*
 std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t* data, size_t length,
                                                                   bool isStartOfSnapshot, bool isEndOfSnapshot,
                                                                   uint16_t templateId,
                                                                   int32_t securityId) {
     assert(templateId == 17 && "Unexpected templateId for OrderBookSnapshot");
+    
+    LOG_DEBUG(getTimeStamp() << " Processing snapshot packet: "
+              << "SecurityID=" << securityId
+              << ", Start=" << isStartOfSnapshot
+              << ", End=" << isEndOfSnapshot
+              << ", Length=" << length );
 
-    if (isStartOfSnapshot && isEndOfSnapshot) {
-        // Полный снапшот в одном пакете
-        //std::cout << "Processing complete snapshot in single packet" << std::endl;
-        auto [snapshots, size] = decodeOrderBookSnapshot(data, length);
+    if (lastProcessedSecurityId != -1 && lastProcessedSecurityId != securityId) {
+        LOG_DEBUG(getTimeStamp() << " INFO: Switched from SecurityID "
+                  << lastProcessedSecurityId << " to " << securityId );
+        mixedSnapshotsDetected++;
+    }
+    lastProcessedSecurityId = securityId;
+
+    auto& buffer = fragmentBuffer[securityId];
+
+    if (isStartOfSnapshot) {
+        LOG_DEBUG(getTimeStamp() << " Started new snapshot for SecurityID " << securityId );
+        buffer.clear();
+        buffer.reserve(INITIAL_RESERVE_SIZE);
+    }
+
+    buffer.insert(buffer.end(), data, data + length);
+
+    if (isEndOfSnapshot) {
+        LOG_DEBUG(getTimeStamp() << " Completing snapshot for SecurityID " << securityId );
+        LOG_DEBUG(getTimeStamp() << " Completed snapshot. Total size: " << buffer.size() );
+
+        auto [snapshots, size] = decodeOrderBookSnapshot(buffer.data(), buffer.size());
         if (!snapshots.empty()) {
+            totalSnapshotsProcessed++;
+            buffer.clear();  // Очищаем буфер после обработки, сохраняя выделенную память
             return DecodedMessage(snapshots[0]);
         }
-    } else if (isStartOfSnapshot) {
-        // Начало нового снапшота
-        fragmentedMessages[securityId].fragments.clear();
-        fragmentedMessages[securityId].fragments.push_back(std::vector<uint8_t>(data, data + length));
-        //std::cout << "Started new snapshot. Fragment size: " << length << std::endl;
-    } else if (isEndOfSnapshot) {
-        // Конец снапшота
-        auto& fragMsg = fragmentedMessages[securityId];
-        fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-        std::vector<uint8_t> fullMessage;
-        for (const auto& fragment : fragMsg.fragments) {
-            fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
-        }
-        fragmentedMessages.erase(securityId);
-        //std::cout << "Completed snapshot. Total size: " << fullMessage.size() << std::endl;
-        auto [snapshots, size] = decodeOrderBookSnapshot(fullMessage.data(), fullMessage.size());
-        if (!snapshots.empty()) {
-            return DecodedMessage(snapshots[0]);
-        }
-    } else {
-        // Промежуточный фрагмент снапшота
-        fragmentedMessages[securityId].fragments.push_back(std::vector<uint8_t>(data, data + length));
-        //std::cout << "Added snapshot fragment. Total fragments: " << fragmentedMessages[securityId].fragments.size() << std::endl;
+        buffer.clear();  // Очищаем буфер даже если декодирование не удалось
+    } else if (!isStartOfSnapshot) {
+        LOG_DEBUG(getTimeStamp() << " Added intermediate fragment for SecurityID " << securityId );
     }
 
     return std::nullopt;
-}*/
-
-std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t* data, size_t length,
-                                                        bool isStartOfSnapshot, bool isEndOfSnapshot,
-                                                        uint16_t templateId,
-                                                        int32_t securityId) {
-        assert(templateId == 17 && "Unexpected templateId for OrderBookSnapshot");
-
-        std::cout << getTimeStamp() << " Processing snapshot packet: "
-                  << "SecurityID=" << securityId
-                  << ", Start=" << isStartOfSnapshot
-                  << ", End=" << isEndOfSnapshot
-                  << ", Length=" << length << std::endl;
-
-        if (lastProcessedSecurityId != -1 && lastProcessedSecurityId != securityId) {
-            std::cout << getTimeStamp() << " WARNING: Switched from SecurityID "
-                      << lastProcessedSecurityId << " to " << securityId << std::endl;
-            mixedSnapshotsDetected++;
-        }
-        lastProcessedSecurityId = securityId;
-
-        if (isStartOfSnapshot && isEndOfSnapshot) {
-            std::cout << getTimeStamp() << " Processing complete snapshot in single packet" << std::endl;
-            auto [snapshots, size] = decodeOrderBookSnapshot(data, length);
-            if (!snapshots.empty()) {
-                totalSnapshotsProcessed++;
-                return DecodedMessage(snapshots[0]);
-            }
-        } else if (isStartOfSnapshot) {
-            std::cout << getTimeStamp() << " Started new snapshot for SecurityID " << securityId << std::endl;
-            fragmentedMessages[securityId].fragments.clear();
-            fragmentedMessages[securityId].fragments.push_back(std::vector<uint8_t>(data, data + length));
-            fragmentedMessages[securityId].fragmentCount = 1;
-            fragmentedMessages[securityId].lastUpdateTime = std::chrono::steady_clock::now();
-        } else if (isEndOfSnapshot) {
-            std::cout << getTimeStamp() << " Completing snapshot for SecurityID " << securityId << std::endl;
-            auto& fragMsg = fragmentedMessages[securityId];
-            fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-            fragMsg.fragmentCount++;
-
-            std::vector<uint8_t> fullMessage;
-            for (const auto& fragment : fragMsg.fragments) {
-                fullMessage.insert(fullMessage.end(), fragment.begin(), fragment.end());
-            }
-            fragmentedMessages.erase(securityId);
-
-            std::cout << getTimeStamp() << " Completed snapshot. Total size: " << fullMessage.size()
-                      << ", Fragments: " << fragMsg.fragmentCount << std::endl;
-
-            auto [snapshots, size] = decodeOrderBookSnapshot(fullMessage.data(), fullMessage.size());
-            if (!snapshots.empty()) {
-                totalSnapshotsProcessed++;
-                return DecodedMessage(snapshots[0]);
-            }
-        } else {
-            std::cout << getTimeStamp() << " Added intermediate fragment for SecurityID " << securityId << std::endl;
-            auto& fragMsg = fragmentedMessages[securityId];
-            fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
-            fragMsg.fragmentCount++;
-            fragMsg.lastUpdateTime = std::chrono::steady_clock::now();
-        }
-
-        return std::nullopt;
-    }
+}
 
 std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_t* data, size_t length) const {
     std::vector<OrderUpdate> updates;
@@ -348,8 +292,8 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
 
     while (offset < length) {
         if (offset + sizeof(SBEHeader) > length) {
-            //std::cout << "Insufficient data for SBE Header. Remaining: " 
-            //          << (length - offset) << ", Required: " << sizeof(SBEHeader) << std::endl;
+            LOG_DEBUG("Insufficient data for SBE Header. Remaining: " 
+                      << (length - offset) << ", Required: " << sizeof(SBEHeader) );
             break;
         }
 
@@ -357,8 +301,8 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
         offset += sizeof(SBEHeader);
 
         if (offset + sbeHeader.blockLength > length) {
-            //std::cout << "Insufficient data for message block. Remaining: " 
-            //          << (length - offset) << ", Required: " << sbeHeader.blockLength << std::endl;
+            LOG_DEBUG("Insufficient data for message block. Remaining: " 
+                      << (length - offset) << ", Required: " << sbeHeader.blockLength );
             break;
         }
 
@@ -378,7 +322,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
                 }
                 break;
             default:
-                //std::cout << "Unknown templateId in incremental packet: " << sbeHeader.templateId << std::endl;
+                LOG_DEBUG("Unknown templateId in incremental packet: " << sbeHeader.templateId );
                 // Пропускаем неизвестный блок
                 offset += sbeHeader.blockLength;
                 break;
@@ -386,7 +330,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
     }
 
     if (offset < length) {
-        std::cout << "Warning: " << (length - offset) << " bytes remaining after processing incremental packet" << std::endl;
+        LOG_DEBUG("Warning: " << (length - offset) << " bytes remaining after processing incremental packet" );
     }
 
     if (!updates.empty()) {
@@ -399,7 +343,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
 }
 
 OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
-    //std::cout << "Decoding OrderUpdate. Available length: " << length << std::endl;
+    LOG_DEBUG("Decoding OrderUpdate. Available length: " << length );
 
     if (length < 50) { // минимальный размер OrderUpdate
         throw std::runtime_error("Insufficient data for OrderUpdate. Required: 50, Available: " + std::to_string(length));
@@ -436,22 +380,22 @@ OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) 
     offset += 1;
 
 /*    
-    std::cout << "Decoded OrderUpdate:" << std::endl
-              << "  MDEntryID: " << update.MDEntryID << std::endl
-              << "  MDEntryPx: " << update.MDEntryPx.mantissa << "e" << update.MDEntryPx.exponent << std::endl
-              << "  MDEntrySize: " << update.MDEntrySize << std::endl
-              << "  MDFlags: 0x" << std::hex << update.MDFlags << std::dec << std::endl
-              << "  MDFlags2: 0x" << std::hex << update.MDFlags2 << std::dec << std::endl
-              << "  SecurityID: " << update.SecurityID << std::endl
-              << "  RptSeq: " << update.RptSeq << std::endl
-              << "  UpdateAction: " << static_cast<int>(update.UpdateAction) << std::endl
-              << "  EntryType: " << static_cast<char>(update.EntryType) << std::endl;
+    LOG_DEBUG("Decoded OrderUpdate:" )
+              << "  MDEntryID: " << update.MDEntryID )
+              << "  MDEntryPx: " << update.MDEntryPx.mantissa << "e" << update.MDEntryPx.exponent )
+              << "  MDEntrySize: " << update.MDEntrySize )
+              << "  MDFlags: 0x" << std::hex << update.MDFlags << std::dec )
+              << "  MDFlags2: 0x" << std::hex << update.MDFlags2 << std::dec )
+              << "  SecurityID: " << update.SecurityID )
+              << "  RptSeq: " << update.RptSeq )
+              << "  UpdateAction: " << static_cast<int>(update.UpdateAction) )
+              << "  EntryType: " << static_cast<char>(update.EntryType) );
 */
     return update;
 }
 
 OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
-    //std::cout << "Decoding OrderExecution. Available length: " << length << std::endl;
+    LOG_DEBUG("Decoding OrderExecution. Available length: " << length );
 
     if (length < 74) { // минимальный размер OrderExecution
         throw std::runtime_error("Insufficient data for OrderExecution. Required: 74, Available: " + std::to_string(length));
@@ -497,19 +441,19 @@ OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t le
     offset += 1;
 
 /*    
-    std::cout << "Decoded OrderExecution:" << std::endl
-              << "  MDEntryID: " << execution.MDEntryID << std::endl
-              << "  MDEntryPx: " << execution.MDEntryPx.mantissa << "e" << execution.MDEntryPx.exponent << std::endl
-              << "  MDEntrySize: " << execution.MDEntrySize << std::endl
-              << "  LastPx: " << execution.LastPx.mantissa << "e" << execution.LastPx.exponent << std::endl
-              << "  LastQty: " << execution.LastQty << std::endl
-              << "  TradeID: " << execution.TradeID << std::endl
-              << "  MDFlags: 0x" << std::hex << execution.MDFlags << std::dec << std::endl
-              << "  MDFlags2: 0x" << std::hex << execution.MDFlags2 << std::dec << std::endl
-              << "  SecurityID: " << execution.SecurityID << std::endl
-              << "  RptSeq: " << execution.RptSeq << std::endl
-              << "  UpdateAction: " << static_cast<int>(execution.UpdateAction) << std::endl
-              << "  EntryType: " << static_cast<char>(execution.EntryType) << std::endl;
+    LOG_DEBUG << "Decoded OrderExecution:" )
+              << "  MDEntryID: " << execution.MDEntryID )
+              << "  MDEntryPx: " << execution.MDEntryPx.mantissa << "e" << execution.MDEntryPx.exponent )
+              << "  MDEntrySize: " << execution.MDEntrySize )
+              << "  LastPx: " << execution.LastPx.mantissa << "e" << execution.LastPx.exponent )
+              << "  LastQty: " << execution.LastQty )
+              << "  TradeID: " << execution.TradeID )
+              << "  MDFlags: 0x" << std::hex << execution.MDFlags << std::dec )
+              << "  MDFlags2: 0x" << std::hex << execution.MDFlags2 << std::dec )
+              << "  SecurityID: " << execution.SecurityID )
+              << "  RptSeq: " << execution.RptSeq )
+              << "  UpdateAction: " << static_cast<int>(execution.UpdateAction) )
+              << "  EntryType: " << static_cast<char>(execution.EntryType) );
 */
     return execution;
 }
@@ -543,13 +487,13 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
         uint8_t noMDEntries = data[offset];
         offset += 1;
 
-        //std::cout << "Decoding snapshot for SecurityID: " << snapshot.SecurityID
-        //          << ", NoMDEntries: " << static_cast<int>(noMDEntries)
-        //          << ", BlockLength: " << blockLength << std::endl;
+        LOG_DEBUG("Decoding snapshot for SecurityID: " << snapshot.SecurityID
+                  << ", NoMDEntries: " << static_cast<int>(noMDEntries)
+                  << ", BlockLength: " << blockLength );
 
         // Проверка на достаточность данных для всех записей
         if (offset + blockLength * noMDEntries > length) {
-            std::cout << "Warning: Incomplete snapshot data for SecurityID: " << snapshot.SecurityID << std::endl;
+            LOG_WARNING("Incomplete snapshot data for SecurityID: " << snapshot.SecurityID );
             break;
         }
 
@@ -557,7 +501,7 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
 
 	for (int i = 0; i < noMDEntries; ++i) {
     		if (blockLength < MIN_ENTRY_SIZE) {
-        		std::cout << "Error: Invalid blockLength for entry " << i << std::endl;
+        		LOG_ERROR("Invalid blockLength for entry " << i );
         		break;
     		}
 
@@ -565,8 +509,8 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
     		offset += blockLength;
 	}
 
-        //std::cout << "Snapshot decoded. Entries: " << snapshot.entries.size()
-        //          << ", Bytes processed: " << (offset - initialOffset) << std::endl;
+        LOG_DEBUG("Snapshot decoded. Entries: " << snapshot.entries.size()
+                  << ", Bytes processed: " << (offset - initialOffset) );
 
         snapshots.push_back(std::move(snapshot));
 
@@ -576,16 +520,16 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
         }
     }
 
-    //std::cout << "Total snapshots decoded: " << snapshots.size()
-    //          << ", Total bytes processed: " << offset
-    //          << " out of " << length << std::endl;
+    LOG_DEBUG("Total snapshots decoded: " << snapshots.size()
+              << ", Total bytes processed: " << offset
+              << " out of " << length );
 
     return {snapshots, offset};
 }
 
 OrderBookEntry SimbaDecoder::decodeOrderBookEntry(const uint8_t* data, [[maybe_unused]] size_t length) const {
     if (length < sizeof(OrderBookEntry)) {
-	    std::cout << "Insufficient data for OrderBookEntry length: " << length << " sizeof(OrderBookEntry) = " << sizeof(OrderBookEntry) << std::endl;
+	    LOG_WARNING("Insufficient data for OrderBookEntry length: " << length << " sizeof(OrderBookEntry) = " << sizeof(OrderBookEntry) );
     }
 
     OrderBookEntry entry;
@@ -608,10 +552,10 @@ OrderBookEntry SimbaDecoder::decodeOrderBookEntry(const uint8_t* data, [[maybe_u
     entry.EntryType = static_cast<MDEntryType>(data[offset]);
     offset += 1;
 
-    //std::cout << "  MDEntryID: " << entry.MDEntryID
-    //          << ", MDEntryPx: " << entry.MDEntryPx.mantissa << "e-5"
-    //          << ", MDEntrySize: " << entry.MDEntrySize
-    //          << ", EntryType: " << static_cast<char>(entry.EntryType) << std::endl;
+    LOG_DEBUG("  MDEntryID: " << entry.MDEntryID
+              << ", MDEntryPx: " << entry.MDEntryPx.mantissa << "e-5"
+              << ", MDEntrySize: " << entry.MDEntrySize
+              << ", EntryType: " << static_cast<char>(entry.EntryType) );
 
     return entry;
 }
@@ -660,10 +604,23 @@ void SimbaDecoder::parseHeader(const uint8_t* data, uint16_t& blockLength, uint1
     version = decodeUInt16(data + 6);
 }
 
+std::string SimbaDecoder::getTimeStamp() {
+    auto now = std::chrono::system_clock::now();
+    auto nowAsTimeT = std::chrono::system_clock::to_time_t(now);
+    auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&nowAsTimeT), "%Y-%m-%d %H:%M:%S")
+       << '.' << std::setfill('0') << std::setw(3) << nowMs.count();
+
+   return ss.str();
+}
+
 void SimbaDecoder::saveDecodedData(const std::string& filename) const {
     std::ofstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "Unable to open file: " << filename << std::endl;
+        LOG_ERROR("Unable to open file: " << filename );
         return;
     }
 
@@ -671,4 +628,13 @@ void SimbaDecoder::saveDecodedData(const std::string& filename) const {
     // Implement the logic to save decoded data
 
     file.close();
+}
+
+void SimbaDecoder::printStatistics() {
+    LOG_INFO("Total snapshots processed: " << totalSnapshotsProcessed);
+    LOG_INFO("Mixed snapshots detected: " << mixedSnapshotsDetected);
+    if (totalSnapshotsProcessed > 0) {
+        double mixedPercentage = (static_cast<double>(mixedSnapshotsDetected) / totalSnapshotsProcessed) * 100.0;
+        LOG_INFO("Percentage of mixed snapshots: " << std::fixed << std::setprecision(2) << mixedPercentage << "%");
+    }
 }
