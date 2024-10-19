@@ -314,16 +314,34 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
         switch (sbeHeader.templateId) {
             case 15: // OrderUpdate
                 {
-                    OrderUpdate update = decodeOrderUpdate(data + offset, sbeHeader.blockLength);
-                    updates.push_back(update);
-                    offset += sbeHeader.blockLength;
+                    //OrderUpdate update = decodeOrderUpdate(data + offset, sbeHeader.blockLength);
+                    //updates.push_back(update);
+                    //offset += sbeHeader.blockLength;
+
+		    std::optional<OrderUpdate> maybeUpdate = decodeOrderUpdate(data + offset, sbeHeader.blockLength);
+                    if (maybeUpdate) {
+                        updates.push_back(*maybeUpdate);
+                        offset += sbeHeader.blockLength;
+                    } else {
+                        LOG_WARNING("Failed to decode OrderUpdate at offset " << offset);
+                        offset += sbeHeader.blockLength; // Skip this block even if decoding failed
+                    }
                 }
                 break;
             case 16: // OrderExecution
                 {
-                    OrderExecution execution = decodeOrderExecution(data + offset, sbeHeader.blockLength);
-                    executions.push_back(execution);
-                    offset += sbeHeader.blockLength;
+                    //OrderExecution execution = decodeOrderExecution(data + offset, sbeHeader.blockLength);
+                    //executions.push_back(execution);
+                    //offset += sbeHeader.blockLength;
+		    
+                    std::optional<OrderExecution> maybeExecution = decodeOrderExecution(data + offset, sbeHeader.blockLength);
+                    if (maybeExecution) {
+                        executions.push_back(*maybeExecution);
+                        offset += sbeHeader.blockLength;
+                    } else {
+                        LOG_WARNING("Failed to decode OrderExecution at offset " << offset);
+                        offset += sbeHeader.blockLength; // Skip this block even if decoding failed
+                    }
                 }
                 break;
             default:
@@ -347,6 +365,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
     return std::nullopt;
 }
 
+/*
 OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
     LOG_DEBUG("Decoding OrderUpdate. Available length: " << length );
 
@@ -397,7 +416,61 @@ OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) 
 
     return update;
 }
+*/
 
+std::optional<OrderUpdate> SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
+    LOG_DEBUG("Decoding OrderUpdate. Available length: " << length);
+
+    if (length < sizeof(OrderUpdate)) /*[[unlikely]]*/ {
+        LOG_WARNING("Insufficient data for OrderUpdate. Required: " <<
+                    sizeof(OrderUpdate) << ", Available: " << length);
+        return std::nullopt;
+    }
+
+    OrderUpdate update;
+    size_t offset = 0;
+
+    update.MDEntryID = decodeInt64(data + offset);
+    offset += sizeof(update.MDEntryID);
+
+    update.MDEntryPx = decodeDecimal5(data + offset);
+    offset += sizeof(update.MDEntryPx);
+
+    update.MDEntrySize = decodeInt64(data + offset);
+    offset += sizeof(update.MDEntrySize);
+
+    update.MDFlags = decodeUInt64(data + offset);
+    offset += sizeof(update.MDFlags);
+
+    update.MDFlags2 = decodeUInt64(data + offset);
+    offset += sizeof(update.MDFlags2);
+
+    update.SecurityID = decodeInt32(data + offset);
+    offset += sizeof(update.SecurityID);
+
+    update.RptSeq = decodeUInt32(data + offset);
+    offset += sizeof(update.RptSeq);
+
+    update.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
+    offset += sizeof(update.UpdateAction);
+
+    update.EntryType = static_cast<MDEntryType>(data[offset]);
+    offset += sizeof(update.EntryType);
+
+    LOG_DEBUG("Decoded OrderUpdate:" << "  MDEntryID: " << update.MDEntryID
+              << "  MDEntryPx: " << update.MDEntryPx.mantissa << "e" << update.MDEntryPx.exponent
+              << "  MDEntrySize: " << update.MDEntrySize
+              << "  MDFlags: 0x" << std::hex << update.MDFlags << std::dec
+              << "  MDFlags2: 0x" << std::hex << update.MDFlags2 << std::dec
+              << "  SecurityID: " << update.SecurityID
+              << "  RptSeq: " << update.RptSeq
+              << "  UpdateAction: " << static_cast<int>(update.UpdateAction)
+              << "  EntryType: " << static_cast<char>(update.EntryType));
+
+    return update;
+}
+
+/*
 OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
     LOG_DEBUG("Decoding OrderExecution. Available length: " << length );
 	
@@ -458,6 +531,68 @@ OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t le
               << "  RptSeq: " << execution.RptSeq
               << "  UpdateAction: " << static_cast<int>(execution.UpdateAction)
               << "  EntryType: " << static_cast<char>(execution.EntryType) );
+
+    return execution;
+}
+*/
+
+std::optional<OrderExecution> SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
+    LOG_DEBUG("Decoding OrderExecution. Available length: " << length);
+
+    if (length < sizeof(OrderExecution)) /*[[unlikely]]*/ { // Minimum size of OrderExecution
+        LOG_WARNING("Insufficient data for OrderExecution. Required: " << sizeof(OrderExecution) << ", Available: " << length);
+        return std::nullopt;
+    }
+
+    OrderExecution execution;
+    size_t offset = 0;
+
+    execution.MDEntryID = decodeInt64(data + offset);
+    offset += sizeof(execution.MDEntryID);
+
+    execution.MDEntryPx = decodeDecimal5(data + offset);
+    offset += sizeof(execution.MDEntryPx);
+
+    execution.MDEntrySize = decodeInt64(data + offset);
+    offset += sizeof(execution.MDEntrySize);
+
+    execution.LastPx = decodeDecimal5(data + offset);
+    offset += sizeof(execution.LastPx);
+
+    execution.LastQty = decodeInt64(data + offset);
+    offset += sizeof(execution.LastQty);
+
+    execution.TradeID = decodeInt64(data + offset);
+    offset += sizeof(execution.TradeID);
+
+    execution.MDFlags = decodeUInt64(data + offset);
+    offset += sizeof(execution.MDFlags);
+
+    execution.MDFlags2 = decodeUInt64(data + offset);
+    offset += sizeof(execution.MDFlags2);
+
+    execution.SecurityID = decodeInt32(data + offset);
+    offset += sizeof(execution.SecurityID);
+
+    execution.RptSeq = decodeUInt32(data + offset);
+    offset += sizeof(execution.RptSeq);
+
+    execution.UpdateAction = static_cast<MDUpdateAction>(data[offset++]);
+    execution.EntryType = static_cast<MDEntryType>(data[offset++]);
+
+    LOG_DEBUG("Decoded OrderExecution:"
+              << "  MDEntryID: " << execution.MDEntryID
+              << "  MDEntryPx: " << execution.MDEntryPx.mantissa << "e" << execution.MDEntryPx.exponent
+              << "  MDEntrySize: " << execution.MDEntrySize
+              << "  LastPx: " << execution.LastPx.mantissa << "e" << execution.LastPx.exponent
+              << "  LastQty: " << execution.LastQty
+              << "  TradeID: " << execution.TradeID
+              << "  MDFlags: 0x" << std::hex << execution.MDFlags << std::dec
+              << "  MDFlags2: 0x" << std::hex << execution.MDFlags2 << std::dec
+              << "  SecurityID: " << execution.SecurityID
+              << "  RptSeq: " << execution.RptSeq
+              << "  UpdateAction: " << static_cast<int>(execution.UpdateAction)
+              << "  EntryType: " << static_cast<char>(execution.EntryType));
 
     return execution;
 }
@@ -617,19 +752,6 @@ std::string SimbaDecoder::getTimeStamp() {
        << '.' << std::setfill('0') << std::setw(3) << nowMs.count();
 
    return ss.str();
-}
-
-void SimbaDecoder::saveDecodedData(const std::string& filename) const {
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        LOG_ERROR("Unable to open file: " << filename );
-        return;
-    }
-
-    file << "Decoded data will be saved here.\n";
-    // Implement the logic to save decoded data
-
-    file.close();
 }
 
 void SimbaDecoder::printStatistics() {

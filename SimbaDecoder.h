@@ -136,9 +136,6 @@ public:
     // Main decoding method
     [[nodiscard]] std::optional<DecodedMessage> decodeMessage(const uint8_t* data, size_t length);
 
-    // Method to save decoded data
-    void saveDecodedData(const std::string& filename) const;
-
     void printStatistics();
 
 private:
@@ -179,8 +176,8 @@ private:
     std::optional<DecodedMessage> decodeIncrementalPacket(const uint8_t* data, size_t length) const;
 
     // Specialized decoding methods
-    OrderUpdate decodeOrderUpdate(const uint8_t* data, size_t length) const;
-    OrderExecution decodeOrderExecution(const uint8_t* data, size_t length) const;
+    std::optional<OrderUpdate> decodeOrderUpdate(const uint8_t* data, size_t length) const;
+    std::optional<OrderExecution> decodeOrderExecution(const uint8_t* data, size_t length) const;
     std::pair<std::vector<OrderBookSnapshot>, size_t> decodeOrderBookSnapshot(const uint8_t* data, size_t length) const;
     OrderBookEntry decodeOrderBookEntry(const uint8_t* data, size_t length) const;
 
