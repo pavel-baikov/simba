@@ -16,8 +16,8 @@ bool isFragmented(uint16_t msgFlags) {
     bool startOfSnapshot = msgFlags & 0x2;
     bool endOfSnapshot = msgFlags & 0x4;
 
-    // Если это не последний фрагмент, или это начало/конец снэпшота, 
-    // то сообщение фрагментировано
+    // If this is not the last fragment, or this is the start/end of a snapshot,
+    // then the message is fragmented.
     return !lastFragment || startOfSnapshot || endOfSnapshot;
 }
 
@@ -36,14 +36,14 @@ MarketDataPacketHeader SimbaDecoder::decodeMarketDataPacketHeader(const uint8_t*
 
     header.sendingTime = decodeUInt64(data + offset);
 
-    // Логирование распарсенных данных
+    // Logging the parsed data
     LOG_DEBUG("Decoded Market Data Packet Header:" );
     LOG_DEBUG("  MsgSeqNum: " << header.msgSeqNum );
     LOG_DEBUG("  MsgSize: " << header.msgSize );
     LOG_DEBUG("  MsgFlags: 0x" << std::hex << header.msgFlags << std::dec );
     LOG_DEBUG("  SendingTime: " << header.sendingTime );
 
-    // Дополнительная расшифровка MsgFlags
+    // Additional decoding of MsgFlags
     LOG_DEBUG("  MsgFlags details:" );
     LOG_DEBUG("    LastFragment: " << ((header.msgFlags & 0x01) ? "Yes" : "No") );
     LOG_DEBUG("    StartOfSnapshot: " << ((header.msgFlags & 0x02) ? "Yes" : "No") );
@@ -58,13 +58,13 @@ IncrementalPacketHeader SimbaDecoder::decodeIncrementalPacketHeader(const uint8_
     header.transactTime = decodeUInt64(data);
     header.exchangeTradingSessionID = decodeUInt32(data + 8);
 
-    // Логирование распарсенных данных
+    // Logging the parsed data
     LOG_DEBUG("Decoded Incremental Packet Header:" );
     LOG_DEBUG("  TransactTime: " << header.transactTime );
     LOG_DEBUG("  ExchangeTradingSessionID: " << header.exchangeTradingSessionID );
 
-    // Дополнительная информация о TransactTime
-    time_t seconds = header.transactTime / 1000000000; // Наносекунды в секунды
+    // Additional information about TransactTime
+    time_t seconds = header.transactTime / 1000000000; // Nanoseconds to seconds
     struct tm *timeinfo = localtime(&seconds);
     char buffer[80];
     strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
@@ -90,14 +90,14 @@ SBEHeader SimbaDecoder::decodeSBEHeader(const uint8_t* data) const {
 
     header.version = decodeUInt16(data + offset);
 
-    // Логирование распарсенных данных
+    // Logging the parsed data
     LOG_DEBUG("Decoded SBE Header:" );
     LOG_DEBUG("  BlockLength: " << header.blockLength );
     LOG_DEBUG("  TemplateID: " << header.templateId );
     LOG_DEBUG("  SchemaID: " << header.schemaId );
     LOG_DEBUG("  Version: " << header.version );
 
-    // Дополнительная информация о TemplateID
+    // Additional information about TemplateID
     LOG_DEBUG("  TemplateID details:" );
     switch (header.templateId) {
         case 15:
@@ -168,7 +168,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
     LOG_DEBUG("Initial SBE Header:" );
     SBEHeader sbeHeader = decodeSBEHeader(data + offset);
 
-    // Раннее отсеивание ненужных типов сообщений
+    // Early filtering of unnecessary message types
     switch (sbeHeader.templateId) {
         case 15: // OrderUpdate
         case 16: // OrderExecution
@@ -217,13 +217,13 @@ std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8
                                                                      bool isLastFragment, uint16_t templateId,
                                                                      const std::pair<int32_t, uint16_t>& key) {
     if (!isLastFragment) {
-        // Добавляем фрагмент к текущей транзакции
+        // Adding fragment to the current transaction
         auto& fragMsg = fragmentedIncrementalMessages[key];
         fragMsg.fragments.push_back(std::vector<uint8_t>(data, data + length));
         LOG_DEBUG("Added incremental fragment. Total fragments: " << fragMsg.fragments.size() );
         return std::nullopt;
     } else {
-        // Последний фрагмент или целое сообщение
+        // Last fragment or complete message
         std::vector<uint8_t> fullMessage(data, data + length);
         if (fragmentedIncrementalMessages.count(key) > 0) {
             auto& fragMsg = fragmentedIncrementalMessages[key];
@@ -274,10 +274,10 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
         auto [snapshots, size] = decodeOrderBookSnapshot(buffer.data(), buffer.size());
         if (!snapshots.empty()) {
             totalSnapshotsProcessed++;
-            buffer.clear();  // Очищаем буфер после обработки, сохраняя выделенную память
+            buffer.clear();  // Clearing the buffer after processing, while preserving allocated memory
             return DecodedMessage(snapshots[0]);
         }
-        buffer.clear();  // Очищаем буфер даже если декодирование не удалось
+        buffer.clear();  // Clearing the buffer even if decoding failed
     } else if (!isStartOfSnapshot) {
         LOG_DEBUG(getTimeStamp() << " Added intermediate fragment for SecurityID " << securityId );
     }
@@ -323,7 +323,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
                 break;
             default:
                 LOG_DEBUG("Unknown templateId in incremental packet: " << sbeHeader.templateId );
-                // Пропускаем неизвестный блок
+                // Skipping unknown block
                 offset += sbeHeader.blockLength;
                 break;
         }
@@ -334,9 +334,9 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
     }
 
     if (!updates.empty()) {
-        return DecodedMessage(updates[0]);  // Возвращаем первое обновление
+        return DecodedMessage(updates[0]);  // Returning the first update
     } else if (!executions.empty()) {
-        return DecodedMessage(executions[0]);  // Возвращаем первое исполнение
+        return DecodedMessage(executions[0]);  // Returning the first execution
     }
 
     return std::nullopt;
@@ -345,7 +345,7 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
 OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
     LOG_DEBUG("Decoding OrderUpdate. Available length: " << length );
 
-    if (length < 50) { // минимальный размер OrderUpdate
+    if (length < 50) { // Minimum size of OrderUpdate
         throw std::runtime_error("Insufficient data for OrderUpdate. Required: 50, Available: " + std::to_string(length));
     }
 
@@ -396,8 +396,8 @@ OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) 
 
 OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
     LOG_DEBUG("Decoding OrderExecution. Available length: " << length );
-
-    if (length < 74) { // минимальный размер OrderExecution
+	
+    if (length < 74) { // Minimum size of OrderExecution
         throw std::runtime_error("Insufficient data for OrderExecution. Required: 74, Available: " + std::to_string(length));
     }
 
@@ -462,9 +462,7 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
     std::vector<OrderBookSnapshot> snapshots;
     size_t offset = 0;
     constexpr size_t HEADER_SIZE = 19;  // 4 + 4 + 4 + 4 + 2 + 1
-    constexpr size_t MIN_ENTRY_SIZE = 8;  // Минимальный размер для OrderBookEntry
-
-    //offset += sizeof(SBEHeader);
+    constexpr size_t MIN_ENTRY_SIZE = 8;  // Minimum size for OrderBookEntry
 
     while (offset + HEADER_SIZE <= length) {
         OrderBookSnapshot snapshot;
@@ -491,7 +489,7 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
                   << ", NoMDEntries: " << static_cast<int>(noMDEntries)
                   << ", BlockLength: " << blockLength );
 
-        // Проверка на достаточность данных для всех записей
+        // Checking for sufficient data for all entries
         if (offset + blockLength * noMDEntries > length) {
             LOG_WARNING("Incomplete snapshot data for SecurityID: " << snapshot.SecurityID );
             break;
@@ -514,7 +512,7 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
 
         snapshots.push_back(std::move(snapshot));
 
-        // Проверка на конец данных или неполный следующий снапшот
+        // Checking for end of data or incomplete next snapshot
         if (offset + HEADER_SIZE > length) {
             break;
         }

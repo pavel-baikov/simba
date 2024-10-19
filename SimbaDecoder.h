@@ -146,7 +146,6 @@ private:
     IncrementalPacketHeader decodeIncrementalPacketHeader(const uint8_t* data);
     SBEHeader decodeSBEHeader(const uint8_t* data) const;
 
-    //std::unordered_map<int32_t, FragmentedMessage> fragmentedMessages;
     std::map<std::pair<int32_t, uint16_t>, FragmentedMessage> fragmentedIncrementalMessages;
 
     static constexpr size_t INITIAL_RESERVE_SIZE = 1024 * 1024;

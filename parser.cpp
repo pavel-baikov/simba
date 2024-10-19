@@ -9,7 +9,7 @@
 
 #include "log.h"
 
-// Структуры для заголовков PCAP файла
+// Structures for PCAP file headers
 struct PCAPFileHeader {
     uint32_t magic_number;
     uint16_t version_major;
@@ -27,15 +27,15 @@ struct PCAPPacketHeader {
     uint32_t orig_len;
 };
 
-// Структуры для заголовков сетевых протоколов
+// Structures for network protocol headers
 struct EthernetHeader {
     uint8_t destMac[6];
     uint8_t srcMac[6];
-    uint16_t etherType;  // Изменено с ether_type на etherType
+    uint16_t etherType; 
 };
 
 struct IPHeader {
-    uint8_t versionIHL;  // Изменено с ver_ihl на versionIHL
+    uint8_t versionIHL; 
     uint8_t typeOfService;
     uint16_t totalLength;
     uint16_t identification;
@@ -44,18 +44,18 @@ struct IPHeader {
     uint8_t protocol;
     uint16_t headerChecksum;
     uint32_t srcIP;
-    uint32_t destIP;  // Изменено с dst_addr на destIP
+    uint32_t destIP;
 };
 
 struct UDPHeader {
     uint16_t srcPort;
-    uint16_t destPort;  // Изменено с dst_port на destPort
+    uint16_t destPort;
     uint16_t length;
     uint16_t checksum;
 };
 
-const uint16_t SIMBA_PORT = 44040; // Замените на актуальный порт
-const uint32_t SIMBA_MULTICAST_IP = 0xEFC31452; // 239.195.20.82 в сетевом порядке байт
+const uint16_t SIMBA_PORT = 44040; // Replace with the actual port
+const uint32_t SIMBA_MULTICAST_IP = 0xEFC31452; // 239.195.20.82 in network byte order
 
 class PCAPParser {
 public:
@@ -192,41 +192,15 @@ void readFileHeader() {
 
     LOG_DEBUG("Magic number: 0x" << std::hex << fileHeader.magic_number << std::dec);
 
-    // Try both little-endian and big-endian interpretations
-    PCAPFileHeader leHeader = fileHeader;
-    PCAPFileHeader beHeader = fileHeader;
-
-    // Convert big-endian to host byte order
-    beHeader.magic_number = __builtin_bswap32(beHeader.magic_number);
-    beHeader.version_major = __builtin_bswap16(beHeader.version_major);
-    beHeader.version_minor = __builtin_bswap16(beHeader.version_minor);
-    beHeader.thiszone = __builtin_bswap32(beHeader.thiszone);
-    beHeader.sigfigs = __builtin_bswap32(beHeader.sigfigs);
-    beHeader.snaplen = __builtin_bswap32(beHeader.snaplen);
-    beHeader.network = __builtin_bswap32(beHeader.network);
-
-    LOG_INFO("Little-endian interpretation:");
-    LOG_INFO("Magic number: 0x" << std::hex << leHeader.magic_number << std::dec);
-    LOG_INFO("Version: " << leHeader.version_major << "." << leHeader.version_minor);
-    LOG_INFO("Timezone offset: " << leHeader.thiszone);
-    LOG_INFO("Timestamp accuracy: " << leHeader.sigfigs);
-    LOG_INFO("Snapshot length: " << leHeader.snaplen);
-    LOG_INFO("Network type: " << leHeader.network);
-
-    LOG_INFO("\nBig-endian interpretation:");
-    LOG_INFO("Magic number: 0x" << std::hex << beHeader.magic_number << std::dec);
-    LOG_INFO("Version: " << beHeader.version_major << "." << beHeader.version_minor);
-    LOG_INFO("Timezone offset: " << beHeader.thiszone);
-    LOG_INFO("Timestamp accuracy: " << beHeader.sigfigs);
-    LOG_INFO("Snapshot length: " << beHeader.snaplen);
-    LOG_INFO("Network type: " << beHeader.network);
+    LOG_INFO("Magic number: 0x" << std::hex << fileHeader.magic_number << std::dec);
+    LOG_INFO("Version: " << fileHeader.version_major << "." << fileHeader.version_minor);
+    LOG_INFO("Timezone offset: " << fileHeader.thiszone);
+    LOG_INFO("Timestamp accuracy: " << fileHeader.sigfigs);
+    LOG_INFO("Snapshot length: " << fileHeader.snaplen);
+    LOG_INFO("Network type: " << fileHeader.network);
 
     // Choose the interpretation that looks more correct
-    if (beHeader.magic_number == 0xa1b2c3d4 || beHeader.magic_number == 0xa1b23c4d) {
-        fileHeader = beHeader;
-        LOG_INFO("\nUsing big-endian interpretation");
-    } else if (leHeader.magic_number == 0xa1b2c3d4 || leHeader.magic_number == 0xa1b23c4d) {
-        fileHeader = leHeader;
+    if (fileHeader.magic_number == 0xa1b2c3d4 || fileHeader.magic_number == 0xa1b23c4d) {
         LOG_INFO("\nUsing little-endian interpretation");
     } else {
         throw std::runtime_error("Invalid PCAP file format. Unrecognized magic number.");
@@ -237,31 +211,31 @@ void readFileHeader() {
 
 void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& decoder) {
     if (packet_data.size() < sizeof(EthernetHeader) + sizeof(IPHeader) + sizeof(UDPHeader)) {
-        return; // Пакет слишком короткий
+        return; // Packet is too short
     }
 
     const EthernetHeader* ethHeader = reinterpret_cast<const EthernetHeader*>(packet_data.data());
     if (ntohs(ethHeader->etherType) != 0x0800) {
-        return; // Не IP пакет
+        return; // Not an IP packet
     }
 
     const IPHeader* ipHeader = reinterpret_cast<const IPHeader*>(packet_data.data() + sizeof(EthernetHeader));
     if (ipHeader->protocol != 17) {
-        return; // Не UDP пакет
+        return; // Not a UDP packet
     }
 
     const UDPHeader* udpHeader = reinterpret_cast<const UDPHeader*>(packet_data.data() + sizeof(EthernetHeader) + (ipHeader->versionIHL & 0x0F) * 4);
     if (ntohs(udpHeader->destPort) != SIMBA_PORT || ntohl(ipHeader->destIP) != SIMBA_MULTICAST_IP) {
-        return; // Не SIMBA SPECTRA пакет
+        return; // Not a SIMBA SPECTRA packet
     }
 
-    // Получаем указатель на начало данных SIMBA SPECTRA
+    // Get a pointer to the start of SIMBA SPECTRA data
     const uint8_t* simba_data = packet_data.data() + sizeof(EthernetHeader) + (ipHeader->versionIHL & 0x0F) * 4 + sizeof(UDPHeader);
 
-    // Получаем длину данных SIMBA SPECTRA
+    // Get the length of SIMBA SPECTRA data
     size_t simba_data_length = ntohs(udpHeader->length) - sizeof(UDPHeader);
 
-    // Вывод отладочной информации
+    // Output debug information
     LOG_DEBUG("Packet details:");
     LOG_DEBUG("  Ether Type: 0x" << std::hex << ntohs(ethHeader->etherType) << std::dec);
     LOG_DEBUG("  IP Protocol: " << static_cast<int>(ipHeader->protocol));
@@ -273,10 +247,10 @@ void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& 
     LOG_DEBUG("  Dest Port: " << ntohs(udpHeader->destPort));
     LOG_DEBUG("  SIMBA data length: " << simba_data_length);
 
-    // Декодируем сообщение SIMBA SPECTRA
+    // Decoding the SIMBA SPECTRA message
     auto decoded_message = decoder.decodeMessage(simba_data, simba_data_length);
 
-    // Здесь вы можете обработать декодированное сообщение
+    // Here you can process the decoded message
     if (decoded_message) {
         std::visit([](auto&& arg) {
             using T = std::decay_t<decltype(arg)>;
