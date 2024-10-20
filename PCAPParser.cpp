@@ -11,7 +11,8 @@
 
 PCAPParser::PCAPParser(const std::string& filename) : file(filename, std::ios::binary) {
 	if (!file.is_open()) {
-		throw std::runtime_error("Cannot open file: " + filename);
+		LOG_ERROR("Cannot open file: " << filename);
+		return;
 	}
 	LOG_INFO("File opened successfully: " << filename);
 
@@ -37,7 +38,8 @@ void PCAPParser::parsePackets(SimbaDecoder& decoder) {
 
 		packetData.resize(packetHeader.incl_len);
 		if (!file.read(reinterpret_cast<char*>(packetData.data()), packetHeader.incl_len)) {
-			throw std::runtime_error("Failed to read packet data");
+			LOG_ERROR("Failed to read packet data");
+			return;
 		}
 
 		LOG_DEBUG("Packet " << ++packetCount << ":");
@@ -114,29 +116,11 @@ void PCAPParser::parsePackets(SimbaDecoder& decoder) {
 void PCAPParser::readFileHeader() {
 	LOG_INFO("Attempting to read PCAP file header...");
 
-	// Read first 24 bytes directly
-	char buffer[24];
-	file.read(buffer, 24);
-	if (file.gcount() != 24) {
-		throw std::runtime_error("Failed to read first 24 bytes. Bytes read: " + std::to_string(file.gcount()));
-	}
-
-	//LOG_DEBUG("First 24 bytes: ");
-	//for (int i = 0; i < 24; ++i) {
-	//    LOG_DEBUG(std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(buffer[i])) << " ");
-	//}
-	//LOG_DEBUG(std::dec);
-
-	// Reset file position
-	file.seekg(0, std::ios::beg);
-
-	// Now try to read the full header
 	file.read(reinterpret_cast<char*>(&fileHeader), sizeof(PCAPFileHeader));
 	if (file.gcount() != sizeof(PCAPFileHeader)) {
-		throw std::runtime_error("Failed to read PCAP file header. Bytes read: " + std::to_string(file.gcount()));
+        	LOG_ERROR("Failed to read PCAP file header. Bytes read: " << file.gcount());
+        	return;
 	}
-
-	LOG_DEBUG("Magic number: 0x" << std::hex << fileHeader.magic_number << std::dec);
 
 	LOG_INFO("Magic number: 0x" << std::hex << fileHeader.magic_number << std::dec);
 	LOG_INFO("Version: " << fileHeader.version_major << "." << fileHeader.version_minor);
@@ -147,9 +131,10 @@ void PCAPParser::readFileHeader() {
 
 	// Choose the interpretation that looks more correct
 	if (fileHeader.magic_number == 0xa1b2c3d4 || fileHeader.magic_number == 0xa1b23c4d) {
-		LOG_INFO("\nUsing little-endian interpretation");
+		is_valid = true;
 	} else {
-		throw std::runtime_error("Invalid PCAP file format. Unrecognized magic number.");
+        	LOG_ERROR("Invalid PCAP file format. Unrecognized magic number.");
+        	return;			
 	}
 
 	LOG_INFO("PCAP file header read successfully");
@@ -214,24 +199,25 @@ void PCAPParser::processPacket(const std::vector<unsigned char>& packet_data, Si
 }
 
 int main(int argc, char* argv[]) {
-	if (argc != 2) {
-		LOG_INFO("Usage: " << argv[0] << " <pcap_file>");
-		return 1;
-	}
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " <pcap_file>" << std::endl;
+        return 1;
+    }
 
-	try {
-		Logger::init_log("simba.log");
+    Logger::init_log("simba.log");
 
-		PCAPParser parser(argv[1]);
-		SimbaDecoder decoder;
-		parser.parsePackets(decoder);
-		decoder.printStatistics();
+    PCAPParser parser(argv[1]);
+    if (!parser.isValid()) {
+        LOG_ERROR("Failed to initialize PCAPParser");
+        Logger::close_log();
+        return 1;
+    }
 
-		Logger::close_log();
-	} catch (const std::exception& e) {
-		LOG_ERROR("Error: " << e.what());
-		return 1;
-	}
+    SimbaDecoder decoder;
+    parser.parsePackets(decoder);
 
-	return 0;
+    decoder.printStatistics();
+
+    Logger::close_log();
+    return 0;
 }

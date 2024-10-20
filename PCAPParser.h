@@ -60,13 +60,14 @@ class PCAPParser {
 	public:
 		PCAPParser(const std::string& filename);
 		void parsePackets(SimbaDecoder& decoder);
-
+		bool isValid() const { return is_valid; }
 	private:
 		void readFileHeader();
 		void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& decoder);
 
 		std::ifstream file;
 		PCAPFileHeader fileHeader;
+		bool is_valid = false;
 };
 
 #endif // PCAP_PARSER_H
