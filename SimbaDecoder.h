@@ -108,7 +108,7 @@ struct SBEHeader {
 
 #pragma pack(pop)
 
-using DecodedMessage = std::variant<OrderUpdate, OrderExecution, OrderBookSnapshot>;
+using DecodedMessage = std::variant<std::vector<OrderUpdate>, std::vector<OrderExecution>, std::vector<OrderBookSnapshot>>;
 
 class SimbaDecoder {
 	public:

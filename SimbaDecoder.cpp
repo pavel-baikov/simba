@@ -286,7 +286,7 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
 		if (!snapshots.empty()) {
 			totalSnapshotsProcessed++;
 			buffer.clear();  // Clearing the buffer after processing, while preserving allocated memory
-			return DecodedMessage(snapshots[0]);
+			return DecodedMessage(std::move(snapshots));
 		}
 		buffer.clear();  // Clearing the buffer even if decoding failed
 	} else if (!isStartOfSnapshot) {
@@ -355,9 +355,9 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
 	}
 
 	if (!updates.empty()) {
-		return DecodedMessage(updates[0]);  // Returning the first update
+		return DecodedMessage(std::move(updates));
 	} else if (!executions.empty()) {
-		return DecodedMessage(executions[0]);  // Returning the first execution
+		return DecodedMessage(std::move(executions));
 	}
 
 	return std::nullopt;
