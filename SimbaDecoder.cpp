@@ -26,13 +26,13 @@ MarketDataPacketHeader SimbaDecoder::decodeMarketDataPacketHeader(const uint8_t*
     size_t offset = 0;
 
     header.msgSeqNum = decodeUInt32(data + offset);
-    offset += 4;
+    offset += SIMBA_UINT32_SIZE;
 
     header.msgSize = decodeUInt16(data + offset);
-    offset += 2;
+    offset += SIMBA_UINT16_SIZE;
 
     header.msgFlags = decodeUInt16(data + offset);
-    offset += 2;
+    offset += SIMBA_UINT16_SIZE;
 
     header.sendingTime = decodeUInt64(data + offset);
 
@@ -80,13 +80,13 @@ SBEHeader SimbaDecoder::decodeSBEHeader(const uint8_t* data) const {
     size_t offset = 0;
 
     header.blockLength = decodeUInt16(data + offset);
-    offset += 2;
+    offset += SIMBA_UINT16_SIZE;
 
     header.templateId = decodeUInt16(data + offset);
-    offset += 2;
+    offset += SIMBA_UINT16_SIZE;
 
     header.schemaId = decodeUInt16(data + offset);
-    offset += 2;
+    offset += SIMBA_UINT16_SIZE;
 
     header.version = decodeUInt16(data + offset);
 
@@ -100,13 +100,13 @@ SBEHeader SimbaDecoder::decodeSBEHeader(const uint8_t* data) const {
     // Additional information about TemplateID
     LOG_DEBUG("  TemplateID details:" );
     switch (header.templateId) {
-        case 15:
+        case TEMPLATE_ID_ORDER_UPDATE:
             LOG_DEBUG("    Message type: OrderUpdate" );
             break;
-        case 16:
+        case TEMPLATE_ID_ORDER_EXECUTION:
             LOG_DEBUG("    Message type: OrderExecution" );
             break;
-        case 17:
+        case TEMPLATE_ID_ORDER_BOOK_SNAPSHOT:
             LOG_DEBUG("    Message type: OrderBookSnapshot" );
             break;
         default:
@@ -170,9 +170,9 @@ std::optional<DecodedMessage> SimbaDecoder::decodeMessage(const uint8_t* data, s
 
     // Early filtering of unnecessary message types
     switch (sbeHeader.templateId) {
-        case 15: // OrderUpdate
-        case 16: // OrderExecution
-        case 17: // OrderBookSnapshot
+        case TEMPLATE_ID_ORDER_UPDATE: // OrderUpdate
+        case TEMPLATE_ID_ORDER_EXECUTION: // OrderExecution
+        case TEMPLATE_ID_ORDER_BOOK_SNAPSHOT: // OrderBookSnapshot
             break;
         default:
             LOG_DEBUG("Ignoring message with TemplateID: " << sbeHeader.templateId );
@@ -214,7 +214,7 @@ std::optional<DecodedMessage> SimbaDecoder::processFragment(const uint8_t* data,
 std::optional<DecodedMessage> SimbaDecoder::processIncrementalPacket(const uint8_t* data, size_t length,
                                                                      bool isLastFragment, uint16_t templateId,
                                                                      int32_t securityId) {
-    auto& fragments = (templateId == 15) ? orderUpdateFragments : orderExecutionFragments;
+    auto& fragments = (templateId == TEMPLATE_ID_ORDER_UPDATE) ? orderUpdateFragments : orderExecutionFragments;
     auto& buffer = fragments[securityId].data;
 
     if (!isLastFragment) {
@@ -247,7 +247,7 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
                                                                   bool isStartOfSnapshot, bool isEndOfSnapshot,
                                                                   uint16_t templateId,
                                                                   int32_t securityId) {
-    assert(templateId == 17 && "Unexpected templateId for OrderBookSnapshot");
+    assert(templateId == TEMPLATE_ID_ORDER_BOOK_SNAPSHOT && "Unexpected templateId for OrderBookSnapshot");
     
     LOG_DEBUG(getTimeStamp() << " Processing snapshot packet: "
               << "SecurityID=" << securityId
@@ -262,7 +262,7 @@ std::optional<DecodedMessage> SimbaDecoder::processSnapshotPacket(const uint8_t*
     }
     lastProcessedSecurityId = securityId;
 
-    auto& buffer = fragmentBuffer[securityId];
+    auto& buffer = snapshotFragments[securityId];
 
     if (isStartOfSnapshot) {
         LOG_DEBUG(getTimeStamp() << " Started new snapshot for SecurityID " << securityId );
@@ -312,12 +312,8 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
         }
 
         switch (sbeHeader.templateId) {
-            case 15: // OrderUpdate
+            case TEMPLATE_ID_ORDER_UPDATE:
                 {
-                    //OrderUpdate update = decodeOrderUpdate(data + offset, sbeHeader.blockLength);
-                    //updates.push_back(update);
-                    //offset += sbeHeader.blockLength;
-
 		    std::optional<OrderUpdate> maybeUpdate = decodeOrderUpdate(data + offset, sbeHeader.blockLength);
                     if (maybeUpdate) {
                         updates.push_back(*maybeUpdate);
@@ -328,12 +324,8 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
                     }
                 }
                 break;
-            case 16: // OrderExecution
+            case TEMPLATE_ID_ORDER_EXECUTION:
                 {
-                    //OrderExecution execution = decodeOrderExecution(data + offset, sbeHeader.blockLength);
-                    //executions.push_back(execution);
-                    //offset += sbeHeader.blockLength;
-		    
                     std::optional<OrderExecution> maybeExecution = decodeOrderExecution(data + offset, sbeHeader.blockLength);
                     if (maybeExecution) {
                         executions.push_back(*maybeExecution);
@@ -365,63 +357,10 @@ std::optional<DecodedMessage> SimbaDecoder::decodeIncrementalPacket(const uint8_
     return std::nullopt;
 }
 
-/*
-OrderUpdate SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
-    LOG_DEBUG("Decoding OrderUpdate. Available length: " << length );
-
-    if (length < 50) { // Minimum size of OrderUpdate
-        throw std::runtime_error("Insufficient data for OrderUpdate. Required: 50, Available: " + std::to_string(length));
-    }
-
-    OrderUpdate update;
-    size_t offset = 0;
-
-    update.MDEntryID = decodeInt64(data + offset);
-    offset += 8;
-
-    update.MDEntryPx = decodeDecimal5(data + offset);
-    offset += 8;
-
-    update.MDEntrySize = decodeInt64(data + offset);
-    offset += 8;
-
-    update.MDFlags = decodeUInt64(data + offset);
-    offset += 8;
-
-    update.MDFlags2 = decodeUInt64(data + offset);
-    offset += 8;
-
-    update.SecurityID = decodeInt32(data + offset);
-    offset += 4;
-
-    update.RptSeq = decodeUInt32(data + offset);
-    offset += 4;
-
-    update.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
-    offset += 1;
-
-    update.EntryType = static_cast<MDEntryType>(data[offset]);
-    offset += 1;
-
-    
-    LOG_DEBUG("Decoded OrderUpdate:" << "  MDEntryID: " << update.MDEntryID 
-              << "  MDEntryPx: " << update.MDEntryPx.mantissa << "e" << update.MDEntryPx.exponent 
-              << "  MDEntrySize: " << update.MDEntrySize 
-              << "  MDFlags: 0x" << std::hex << update.MDFlags << std::dec 
-              << "  MDFlags2: 0x" << std::hex << update.MDFlags2 << std::dec 
-              << "  SecurityID: " << update.SecurityID 
-              << "  RptSeq: " << update.RptSeq 
-              << "  UpdateAction: " << static_cast<int>(update.UpdateAction)
-              << "  EntryType: " << static_cast<char>(update.EntryType) );
-
-    return update;
-}
-*/
-
 std::optional<OrderUpdate> SimbaDecoder::decodeOrderUpdate(const uint8_t* data, size_t length) const {
     LOG_DEBUG("Decoding OrderUpdate. Available length: " << length);
 
-    if (length < sizeof(OrderUpdate)) /*[[unlikely]]*/ {
+    if (length < sizeof(OrderUpdate)) [[unlikely]] {
         LOG_WARNING("Insufficient data for OrderUpdate. Required: " <<
                     sizeof(OrderUpdate) << ", Available: " << length);
         return std::nullopt;
@@ -470,76 +409,10 @@ std::optional<OrderUpdate> SimbaDecoder::decodeOrderUpdate(const uint8_t* data, 
     return update;
 }
 
-/*
-OrderExecution SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
-    LOG_DEBUG("Decoding OrderExecution. Available length: " << length );
-	
-    if (length < 74) { // Minimum size of OrderExecution
-        throw std::runtime_error("Insufficient data for OrderExecution. Required: 74, Available: " + std::to_string(length));
-    }
-
-    OrderExecution execution;
-    size_t offset = 0;
-
-    execution.MDEntryID = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.MDEntryPx = decodeDecimal5(data + offset);
-    offset += 8;
-
-    execution.MDEntrySize = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.LastPx = decodeDecimal5(data + offset);
-    offset += 8;
-
-    execution.LastQty = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.TradeID = decodeInt64(data + offset);
-    offset += 8;
-
-    execution.MDFlags = decodeUInt64(data + offset);
-    offset += 8;
-
-    execution.MDFlags2 = decodeUInt64(data + offset);
-    offset += 8;
-
-    execution.SecurityID = decodeInt32(data + offset);
-    offset += 4;
-
-    execution.RptSeq = decodeUInt32(data + offset);
-    offset += 4;
-
-    execution.UpdateAction = static_cast<MDUpdateAction>(data[offset]);
-    offset += 1;
-
-    execution.EntryType = static_cast<MDEntryType>(data[offset]);
-    offset += 1;
-
-    
-    LOG_DEBUG("Decoded OrderExecution:"
-              << "  MDEntryID: " << execution.MDEntryID
-              << "  MDEntryPx: " << execution.MDEntryPx.mantissa << "e" << execution.MDEntryPx.exponent
-              << "  MDEntrySize: " << execution.MDEntrySize
-              << "  LastPx: " << execution.LastPx.mantissa << "e" << execution.LastPx.exponent
-              << "  LastQty: " << execution.LastQty
-              << "  TradeID: " << execution.TradeID
-              << "  MDFlags: 0x" << std::hex << execution.MDFlags << std::dec
-              << "  MDFlags2: 0x" << std::hex << execution.MDFlags2 << std::dec
-              << "  SecurityID: " << execution.SecurityID
-              << "  RptSeq: " << execution.RptSeq
-              << "  UpdateAction: " << static_cast<int>(execution.UpdateAction)
-              << "  EntryType: " << static_cast<char>(execution.EntryType) );
-
-    return execution;
-}
-*/
-
 std::optional<OrderExecution> SimbaDecoder::decodeOrderExecution(const uint8_t* data, size_t length) const {
     LOG_DEBUG("Decoding OrderExecution. Available length: " << length);
 
-    if (length < sizeof(OrderExecution)) /*[[unlikely]]*/ { // Minimum size of OrderExecution
+    if (length < sizeof(OrderExecution)) [[unlikely]] { // Minimum size of OrderExecution
         LOG_WARNING("Insufficient data for OrderExecution. Required: " << sizeof(OrderExecution) << ", Available: " << length);
         return std::nullopt;
     }
@@ -611,18 +484,18 @@ std::pair<std::vector<OrderBookSnapshot>, size_t> SimbaDecoder::decodeOrderBookS
         size_t initialOffset = offset;
 
         snapshot.SecurityID = decodeInt32(data + offset);
-        offset += 4;
+        offset += SIMBA_INT32_SIZE;
         snapshot.LastMsgSeqNumProcessed = decodeUInt32(data + offset);
-        offset += 4;
+        offset += SIMBA_UINT32_SIZE;
         snapshot.RptSeq = decodeUInt32(data + offset);
-        offset += 4;
+        offset += SIMBA_UINT32_SIZE;
         snapshot.ExchangeTradingSessionID = decodeUInt32(data + offset);
-        offset += 4;
+        offset += SIMBA_UINT32_SIZE;
 
         uint16_t blockLength = decodeUInt16(data + offset);
-        offset += 2;
+        offset += SIMBA_UINT16_SIZE;
         uint8_t noMDEntries = data[offset];
-        offset += 1;
+        offset += SIMBA_UINT8_SIZE;
 
         LOG_DEBUG("Decoding snapshot for SecurityID: " << snapshot.SecurityID
                   << ", NoMDEntries: " << static_cast<int>(noMDEntries)
@@ -673,21 +546,21 @@ OrderBookEntry SimbaDecoder::decodeOrderBookEntry(const uint8_t* data, [[maybe_u
     size_t offset = 0;
 
     entry.MDEntryID = decodeInt64(data + offset);
-    offset += 8;
+    offset += SIMBA_INT64_SIZE;
     entry.TransactTime = decodeUInt64(data + offset);
-    offset += 8;
+    offset += SIMBA_UINT64_SIZE;
     entry.MDEntryPx = decodeDecimal5(data + offset);
-    offset += 8;
+    offset += SIMBA_INT64_SIZE;
     entry.MDEntrySize = decodeInt64(data + offset);
-    offset += 8;
+    offset += SIMBA_INT64_SIZE;
     entry.TradeID = decodeInt64(data + offset);
-    offset += 8;
+    offset += SIMBA_INT64_SIZE;
     entry.MDFlags = decodeUInt64(data + offset);
-    offset += 8;
+    offset += SIMBA_UINT64_SIZE;
     entry.MDFlags2 = decodeUInt64(data + offset);
-    offset += 8;
+    offset += SIMBA_UINT64_SIZE;
     entry.EntryType = static_cast<MDEntryType>(data[offset]);
-    offset += 1;
+    offset += SIMBA_UINT8_SIZE;
 
     LOG_DEBUG("  MDEntryID: " << entry.MDEntryID
               << ", MDEntryPx: " << entry.MDEntryPx.mantissa << "e-5"

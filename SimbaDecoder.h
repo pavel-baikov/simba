@@ -146,6 +146,17 @@ private:
 
     static constexpr size_t INITIAL_FRAGMENT_SIZE = 1024 * 64; // 64KB initial size for fragments
 
+    static constexpr size_t SIMBA_INT64_SIZE = 8;
+    static constexpr size_t SIMBA_UINT64_SIZE = 8;
+    static constexpr size_t SIMBA_INT32_SIZE = 4;
+    static constexpr size_t SIMBA_UINT32_SIZE = 4;
+    static constexpr size_t SIMBA_UINT16_SIZE = 2;
+    static constexpr size_t SIMBA_UINT8_SIZE = 1;
+
+    static constexpr int TEMPLATE_ID_ORDER_UPDATE = 15;
+    static constexpr int TEMPLATE_ID_ORDER_EXECUTION = 16;
+    static constexpr int TEMPLATE_ID_ORDER_BOOK_SNAPSHOT = 17;
+
     struct FragmentBuffer {
         std::vector<uint8_t> data;
         
@@ -156,7 +167,7 @@ private:
     std::unordered_map<int32_t, FragmentBuffer> orderExecutionFragments;
 
     static constexpr size_t INITIAL_RESERVE_SIZE = 1024 * 1024;
-    std::unordered_map<int32_t, std::vector<uint8_t>> fragmentBuffer;    
+    std::unordered_map<int32_t, std::vector<uint8_t>> snapshotFragments;    
 
     int totalSnapshotsProcessed = 0;
     int mixedSnapshotsDetected = 0;

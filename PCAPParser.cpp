@@ -1,4 +1,4 @@
-#include "SimbaDecoder.h"
+#include "PCAPParser.h"
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -9,57 +9,7 @@
 
 #include "log.h"
 
-// Structures for PCAP file headers
-struct PCAPFileHeader {
-    uint32_t magic_number;
-    uint16_t version_major;
-    uint16_t version_minor;
-    int32_t  thiszone;
-    uint32_t sigfigs;
-    uint32_t snaplen;
-    uint32_t network;
-};
-
-struct PCAPPacketHeader {
-    uint32_t ts_sec;
-    uint32_t ts_usec;
-    uint32_t incl_len;
-    uint32_t orig_len;
-};
-
-// Structures for network protocol headers
-struct EthernetHeader {
-    uint8_t destMac[6];
-    uint8_t srcMac[6];
-    uint16_t etherType; 
-};
-
-struct IPHeader {
-    uint8_t versionIHL; 
-    uint8_t typeOfService;
-    uint16_t totalLength;
-    uint16_t identification;
-    uint16_t flagsFragmentOffset;
-    uint8_t timeToLive;
-    uint8_t protocol;
-    uint16_t headerChecksum;
-    uint32_t srcIP;
-    uint32_t destIP;
-};
-
-struct UDPHeader {
-    uint16_t srcPort;
-    uint16_t destPort;
-    uint16_t length;
-    uint16_t checksum;
-};
-
-const uint16_t SIMBA_PORT = 44040; // Replace with the actual port
-const uint32_t SIMBA_MULTICAST_IP = 0xEFC31452; // 239.195.20.82 in network byte order
-
-class PCAPParser {
-public:
-    PCAPParser(const std::string& filename) : file(filename, std::ios::binary) {
+PCAPParser::PCAPParser(const std::string& filename) : file(filename, std::ios::binary) {
         if (!file.is_open()) {
             throw std::runtime_error("Cannot open file: " + filename);
         }
@@ -74,7 +24,7 @@ public:
         readFileHeader();
     }
 
-void parsePackets(SimbaDecoder& decoder) {
+void PCAPParser::parsePackets(SimbaDecoder& decoder) {
     PCAPPacketHeader packetHeader;
     std::vector<uint8_t> packetData;
     int packetCount = 0;
@@ -161,11 +111,7 @@ void parsePackets(SimbaDecoder& decoder) {
     }
 }    
 
-private:
-    std::ifstream file;
-    PCAPFileHeader fileHeader;
-
-void readFileHeader() {
+void PCAPParser::readFileHeader() {
     LOG_INFO("Attempting to read PCAP file header...");
     
     // Read first 24 bytes directly
@@ -209,7 +155,7 @@ void readFileHeader() {
     LOG_INFO("PCAP file header read successfully");
 }    
 
-void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& decoder) {
+void PCAPParser::processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& decoder) {
     if (packet_data.size() < sizeof(EthernetHeader) + sizeof(IPHeader) + sizeof(UDPHeader)) {
         return; // Packet is too short
     }
@@ -266,8 +212,6 @@ void processPacket(const std::vector<unsigned char>& packet_data, SimbaDecoder& 
         LOG_WARNING("Failed to decode message");
     }
 }
-
-};
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
