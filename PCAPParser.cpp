@@ -220,10 +220,14 @@ int main(int argc, char* argv[]) {
 	}
 
 	try {
+		Logger::init_log("simba.log");
+
 		PCAPParser parser(argv[1]);
 		SimbaDecoder decoder;
 		parser.parsePackets(decoder);
 		decoder.printStatistics();
+
+		Logger::close_log();
 	} catch (const std::exception& e) {
 		LOG_ERROR("Error: " << e.what());
 		return 1;

@@ -15,6 +15,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG")
 set(SOURCES
     SimbaDecoder.cpp
     PCAPParser.cpp
+    log.cpp
 )
 
 # Create executable
